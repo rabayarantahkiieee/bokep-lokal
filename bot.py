@@ -605,12 +605,23 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if datetime.fromisoformat(log.get('timestamp', '')).date() == today
         ]
 
+        # Hitung statistik minggu ini
+        week_ago = datetime.now() - timedelta(days=7)
+        week_logs = [
+            log for log in user_logs
+            if datetime.fromisoformat(log.get('timestamp', '')) > week_ago
+        ]
+
+        # Hitung user aktif (yang berinteraksi dalam 7 hari terakhir)
+        active_users = len(set(log.get('user_id') for log in week_logs))
+
         stats_text = f"""
-📊 **STATISTIK BOT**
+📊 **STATISTIK BOT LENGKAP**
 
 👥 *USER MANAGEMENT*
 • Total Pengguna: `{len(users)}`
 • Total Admin: `{len(admins)}`
+• User Aktif (7 hari): `{active_users}`
 • User Baru Hari Ini: `{len(set(log.get('user_id') for log in today_logs))}`
 
 ⚙️ *FITUR BOT*
@@ -626,7 +637,13 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ⏰ *SYSTEM INFO*
 • Uptime: `{uptime_str}`
 • Aktivitas Hari Ini: `{len(today_logs)}`
+• Aktivitas Minggu Ini: `{len(week_logs)}`
 • Last Auto Broadcast: `{db.get('auto_broadcast', {}).get('last_sent', 'Belum pernah')[:19] if db.get('auto_broadcast', {}).get('last_sent') else 'Belum pernah'}`
+
+💾 *STORAGE INFO*
+• Database Size: `~{len(str(db))} bytes`
+• User Logs Size: `{len(user_logs)} entries`
+• Backup Available: `{'Ya' if os.path.exists('backup_*.json') else 'Tidak'}`
         """
 
         await update.message.reply_text(stats_text.strip(), parse_mode=ParseMode.MARKDOWN)
@@ -654,6 +671,100 @@ async def getid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         id_text += f"\n- *User ID (dari Reply)*: `{replied_user.id}`"
 
     await update.message.reply_text(id_text, parse_mode=ParseMode.MARKDOWN)
+
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan informasi bot untuk publik."""
+    user = update.effective_user
+    log_user_activity(user, "info_command", "Melihat informasi bot")
+
+    info_text = f"""
+ℹ️ *INFORMASI BOT*
+
+👋 *Halo {user.first_name or 'User'}!*
+
+🤖 *Bot Info Freebet Gacor*
+• Dibuat dengan ❤️ oleh Kilo Code
+• Versi: 3.0 (Multifungsi & Stabil)
+• Bahasa: Indonesia
+
+📋 *Fitur Utama:*
+• ✅ Pesan Welcome Otomatis
+• ✅ Auto Broadcast Terjadwal
+• ✅ Sistem Anti-Spam
+• ✅ Custom Commands
+• ✅ User Activity Tracking
+• ✅ Backup & Restore
+
+🎯 *Command Publik:*
+• `/start` - Mulai bot
+• `/help` - Lihat semua command
+• `/guide` - Panduan placeholder
+• `/getid` - Lihat ID Anda
+• `/info` - Info bot ini
+• `/sangmata` - Cari user by username
+
+⚙️ *Command Admin:*
+• `/settings` - Menu pengaturan
+• `/broadcast` - Kirim pesan ke semua
+• `/stats` - Lihat statistik bot
+• `/listusers` - Daftar semua user
+
+💡 *Tips:*
+Gunakan placeholder di pesan:
+`{{NAME}}`, `{{USERNAME}}`, `{{ID}}`, `{{DATE}}`
+
+📞 *Butuh Bantuan?*
+Hubungi admin jika ada masalah!
+    """
+
+    await update.message.reply_text(info_text.strip(), parse_mode=ParseMode.MARKDOWN)
+
+async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Test response time bot."""
+    import time
+    start_time = time.time()
+
+    user = update.effective_user
+    log_user_activity(user, "ping_command", "Test response time")
+
+    # Hitung response time
+    response_time = round((time.time() - start_time) * 1000, 2)
+
+    ping_text = f"""
+🏓 *PONG!*
+
+⚡ *Response Time:* `{response_time}ms`
+👤 *User:* {user.first_name or 'User'}
+🆔 *ID:* `{user.id}`
+
+🤖 *Bot Status:* Online ✅
+📊 *Server:* Fast & Stable
+    """
+
+    await update.message.reply_text(ping_text.strip(), parse_mode=ParseMode.MARKDOWN)
+
+async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Menampilkan waktu saat ini."""
+    user = update.effective_user
+    log_user_activity(user, "time_command", "Melihat waktu saat ini")
+
+    now = datetime.now()
+    jakarta_time = now + timedelta(hours=7)  # WIB
+
+    time_text = f"""
+🕐 *WAKTU SAAT INI*
+
+🌍 *WIB (Jakarta):* `{jakarta_time.strftime('%H:%M:%S')}`
+📅 *Tanggal:* `{jakarta_time.strftime('%d/%m/%Y')}`
+📆 *Hari:* `{jakarta_time.strftime('%A')}`
+
+🌐 *UTC:* `{now.strftime('%H:%M:%S')}`
+📊 *Timezone:* WIB (UTC+7)
+
+👤 *Requested by:* {user.first_name or 'User'}
+    """
+
+    await update.message.reply_text(time_text.strip(), parse_mode=ParseMode.MARKDOWN)
 
 async def listusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menampilkan daftar semua user yang terdaftar (Admin only)."""
@@ -896,35 +1007,35 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             button_count = len(config.get("buttons", []))
             text = f"*{title}*\n\n- *Foto*: {photo_status}\n- *Tombol*: {button_count}\n\nPilih aksi:"
             keyboard = [
-                [InlineKeyboardButton("👀 👀 Preview Pesan", callback_data=f"preview_{key}")],
-                [InlineKeyboardButton("✏️ ✏️ Ubah Teks", callback_data=f"set_text_{key}")],
-                [InlineKeyboardButton("🖼️ 🖼️ Ubah Foto", callback_data=f"set_photo_{key}")],
-                [InlineKeyboardButton("➕ ➕ Tambah Tombol", callback_data=f"add_button_{key}")],
-                [InlineKeyboardButton("🗑️ 🗑️ Hapus Semua Tombol", callback_data=f"clear_buttons_{key}")],
-                [InlineKeyboardButton("⬅️ ⬅️ Kembali ke Menu", callback_data="main_menu")],
-                [InlineKeyboardButton("🔄 🔄 Refresh Menu", callback_data=f"menu_{key}")]
+                [InlineKeyboardButton("👀 Preview Pesan", callback_data=f"preview_{key}")],
+                [InlineKeyboardButton("✏️ Ubah Teks", callback_data=f"set_text_{key}")],
+                [InlineKeyboardButton("🖼️ Ubah Foto", callback_data=f"set_photo_{key}")],
+                [InlineKeyboardButton("➕ Tambah Tombol", callback_data=f"add_button_{key}")],
+                [InlineKeyboardButton("🗑️ Hapus Semua Tombol", callback_data=f"clear_buttons_{key}")],
+                [InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data="main_menu")],
+                [InlineKeyboardButton("🔄 Refresh Menu", callback_data=f"menu_{key}")]
             ]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"set_text_{key}":
             context.user_data['state'] = f"awaiting_text_{key}"
-            await query.edit_message_text("✍️ ✍️ Silakan kirim *teks baru* untuk pesan ini.\n\n💡 *Support placeholder:* `{NAME}`, `{USERNAME}`, `{ID}`, `{DATE}`", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")],
-                [InlineKeyboardButton("📚 📚 Lihat Guide", callback_data="show_guide")]
+            await query.edit_message_text("✍️ Silakan kirim *teks baru* untuk pesan ini.\n\n💡 *Support placeholder:* `{NAME}`, `{USERNAME}`, `{ID}`, `{DATE}`", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Batal", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("📚 Lihat Guide", callback_data="show_guide")]
             ]), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"set_photo_{key}":
             context.user_data['state'] = f"awaiting_photo_{key}"
-            await query.edit_message_text("🖼️ 🖼️ Silakan *kirim foto baru* untuk pesan ini.\n\n📸 Kirim gambar langsung ke chat ini.", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")],
-                [InlineKeyboardButton("🔄 🔄 Refresh", callback_data=f"set_photo_{key}")]
+            await query.edit_message_text("🖼️ Silakan *kirim foto baru* untuk pesan ini.\n\n📸 Kirim gambar langsung ke chat ini.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Batal", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("🔄 Refresh", callback_data=f"set_photo_{key}")]
             ]), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"add_button_{key}":
             context.user_data['state'] = f"awaiting_button_{key}"
-            await query.edit_message_text("➕ ➕ Silakan kirim data tombol dengan format:\n`Nama Tombol | https://link.com`\n\n📝 *Contoh:*\n`Join Group | https://t.me/group`", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")],
-                [InlineKeyboardButton("📋 📋 Lihat Contoh", callback_data="show_button_example")]
+            await query.edit_message_text("➕ Silakan kirim data tombol dengan format:\n`Nama Tombol | https://link.com`\n\n📝 *Contoh:*\n`Join Group | https://t.me/group`", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Batal", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("📋 Lihat Contoh", callback_data="show_button_example")]
             ]), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"clear_buttons_{key}":
@@ -940,10 +1051,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db[message_key] = DEFAULT_DB.get(message_key, {"text": "", "photo": None, "buttons": []})
                 db[message_key]["buttons"] = []
             save_db(db)
-            await query.edit_message_text("✅ ✅ Semua tombol telah dihapus!", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")],
-                [InlineKeyboardButton("➕ ➕ Tambah Tombol Baru", callback_data=f"add_button_{key}")],
-                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            await query.edit_message_text("✅ Semua tombol telah dihapus!", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("➕ Tambah Tombol Baru", callback_data=f"add_button_{key}")],
+                [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]
             ]))
             return
         elif callback_data == f"preview_{key}":
@@ -984,9 +1095,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await context.bot.send_message(chat_id=query.from_user.id, text="❌ Tidak ada konten untuk di-preview.")
 
                 await query.edit_message_text("✅ Preview telah dikirim ke chat pribadi Anda.", reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")],
-                    [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"preview_{key}")],
-                    [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+                    [InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")],
+                    [InlineKeyboardButton("🔄 Coba Lagi", callback_data=f"preview_{key}")],
+                    [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]
                 ]))
             except Exception as e:
                 error_msg = str(e)
@@ -998,9 +1109,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     error_text = f"❌ Gagal mengirim preview: {error_msg[:100]}..."
 
                 await query.edit_message_text(error_text, reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"preview_{key}")],
-                    [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")],
-                    [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+                    [InlineKeyboardButton("🔄 Coba Lagi", callback_data=f"preview_{key}")],
+                    [InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")],
+                    [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]
                 ]))
             return
 
@@ -1056,23 +1167,23 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]))
             return
         context.user_data['state'] = "awaiting_admin_add"
-        await query.edit_message_text("➕ ➕ TAMBAH ADMIN BARU\n\nSilakan kirim *User ID* yang ingin dijadikan admin.\n\n💡 *Contoh:* `123456789`\n\n⚠️ *Pastikan User ID benar!*", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data="menu_admin")],
-            [InlineKeyboardButton("📋 📋 Lihat Admin Saat Ini", callback_data="menu_admin")]
+        await query.edit_message_text("➕ TAMBAH ADMIN BARU\n\nSilakan kirim *User ID* yang ingin dijadikan admin.\n\n💡 *Contoh:* `123456789`\n\n⚠️ *Pastikan User ID benar!*", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Batal", callback_data="menu_admin")],
+            [InlineKeyboardButton("📋 Lihat Admin Saat Ini", callback_data="menu_admin")]
         ]), parse_mode=ParseMode.MARKDOWN)
         return
 
     elif callback_data == "admin_del":
         if not is_main_admin(query.from_user.id):
-            await query.edit_message_text("❌ ❌ Anda bukan admin utama!\n\nHanya admin utama yang bisa mengelola admin.", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="menu_admin")],
-                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            await query.edit_message_text("❌ Anda bukan admin utama!\n\nHanya admin utama yang bisa mengelola admin.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ Kembali", callback_data="menu_admin")],
+                [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]
             ]))
             return
         context.user_data['state'] = "awaiting_admin_del"
-        await query.edit_message_text("➖ ➖ HAPUS ADMIN\n\nSilakan kirim *User ID* admin yang ingin dihapus.\n\n💡 *Contoh:* `123456789`\n\n⚠️ *Admin utama tidak bisa dihapus!*", reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data="menu_admin")],
-            [InlineKeyboardButton("📋 📋 Lihat Admin Saat Ini", callback_data="menu_admin")]
+        await query.edit_message_text("➖ HAPUS ADMIN\n\nSilakan kirim *User ID* admin yang ingin dihapus.\n\n💡 *Contoh:* `123456789`\n\n⚠️ *Admin utama tidak bisa dihapus!*", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ Batal", callback_data="menu_admin")],
+            [InlineKeyboardButton("📋 Lihat Admin Saat Ini", callback_data="menu_admin")]
         ]), parse_mode=ParseMode.MARKDOWN)
         return
 
@@ -1091,7 +1202,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data == "backup_db":
         try:
             import json
-            from datetime import datetime
+            from datetime import datetime, timedelta
 
             db = load_db()
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1555,8 +1666,8 @@ Tanggal: {DATE}
 ```
         """
         await query.edit_message_text(guide_text.strip(), reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="settings")],
-            [InlineKeyboardButton("📝 📝 Mulai Ubah Teks", callback_data="set_text_welcome")]
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="settings")],
+            [InlineKeyboardButton("📝 Mulai Ubah Teks", callback_data="set_text_welcome")]
         ]), parse_mode=ParseMode.MARKDOWN)
         return
 
@@ -1583,8 +1694,8 @@ Format yang benar:
 • Gunakan emoji di awal nama tombol untuk menarik
         """
         await query.edit_message_text(example_text.strip(), reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="settings")],
-            [InlineKeyboardButton("➕ ➕ Mulai Tambah Tombol", callback_data="add_button_welcome")]
+            [InlineKeyboardButton("⬅️ Kembali", callback_data="settings")],
+            [InlineKeyboardButton("➕ Mulai Tambah Tombol", callback_data="add_button_welcome")]
         ]), parse_mode=ParseMode.MARKDOWN)
         return
 
@@ -1660,15 +1771,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 db["auto_broadcast"]["message"]["text"] = text_input
 
             save_db(db)
-            await update.message.reply_text("✅ ✅ Teks berhasil diubah!", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("👀 👀 Preview Pesan", callback_data=f"preview_{key}")],
-                [InlineKeyboardButton("⬅️ ⬅️ Kembali ke Menu", callback_data=f"menu_{key}")],
-                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            await update.message.reply_text("✅ Teks berhasil diubah!", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👀 Preview Pesan", callback_data=f"preview_{key}")],
+                [InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]
             ]))
         except Exception as e:
-            await update.message.reply_text(f"❌ ❌ Gagal menyimpan teks: {str(e)[:100]}...\n\nSilakan coba lagi.", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"set_text_{key}")],
-                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")]
+            await update.message.reply_text(f"❌ Gagal menyimpan teks: {str(e)[:100]}...\n\nSilakan coba lagi.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Coba Lagi", callback_data=f"set_text_{key}")],
+                [InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")]
             ]))
     
     # Menangani input tombol
@@ -1676,10 +1787,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         key = state.replace("awaiting_button_", "")
         parts = text_input.split(" | ")
         if len(parts) != 2:
-            await update.message.reply_text("❌ ❌ Format salah!\n\nGunakan format:\n`Nama Tombol | https://link.com`\n\n💡 *Contoh yang benar:*\n`Join Group | https://t.me/groupname`", reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📋 📋 Lihat Contoh", callback_data="show_button_example")],
-                [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"add_button_{key}")],
-                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")]
+            await update.message.reply_text("❌ Format salah!\n\nGunakan format:\n`Nama Tombol | https://link.com`\n\n💡 *Contoh yang benar:*\n`Join Group | https://t.me/groupname`", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📋 Lihat Contoh", callback_data="show_button_example")],
+                [InlineKeyboardButton("🔄 Coba Lagi", callback_data=f"add_button_{key}")],
+                [InlineKeyboardButton("⬅️ Batal", callback_data=f"menu_{key}")]
             ]), parse_mode=ParseMode.MARKDOWN)
         else:
             button_text, url = parts
@@ -1704,16 +1815,16 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db["auto_broadcast"]["message"]["buttons"].append({"text": button_text, "url": url})
 
                 save_db(db)
-                await update.message.reply_text(f"✅ ✅ Tombol '{button_text}' berhasil ditambahkan!\n\n🔗 URL: {url}", reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ ➕ Tambah Lagi", callback_data=f"add_button_{key}")],
-                    [InlineKeyboardButton("👀 👀 Preview", callback_data=f"preview_{key}")],
-                    [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")]
+                await update.message.reply_text(f"✅ Tombol '{button_text}' berhasil ditambahkan!\n\n🔗 URL: {url}", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ Tambah Lagi", callback_data=f"add_button_{key}")],
+                    [InlineKeyboardButton("👀 Preview", callback_data=f"preview_{key}")],
+                    [InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")]
                 ]))
             except Exception as e:
-                await update.message.reply_text(f"❌ ❌ Gagal menambahkan tombol: {str(e)[:100]}...\n\nSilakan coba lagi dengan format yang benar.", reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("📋 📋 Lihat Contoh", callback_data="show_button_example")],
-                    [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"add_button_{key}")],
-                    [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")]
+                await update.message.reply_text(f"❌ Gagal menambahkan tombol: {str(e)[:100]}...\n\nSilakan coba lagi dengan format yang benar.", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 Lihat Contoh", callback_data="show_button_example")],
+                    [InlineKeyboardButton("🔄 Coba Lagi", callback_data=f"add_button_{key}")],
+                    [InlineKeyboardButton("⬅️ Batal", callback_data=f"menu_{key}")]
                 ]))
 
     # Menangani input lain-lain
@@ -2052,13 +2163,16 @@ async def set_bot_commands(application: Application):
     """Mengatur daftar command yang muncul di Telegram."""
     commands = [
         BotCommand("start", "▶️ Mulai bot"),
-        BotCommand("help", "ℹ️ Lihat bantuan"),
+        BotCommand("help", "ℹ️ Lihat semua command"),
+        BotCommand("info", "ℹ️ Info bot lengkap"),
         BotCommand("guide", "📚 Guide placeholder pesan"),
+        BotCommand("ping", "🏓 Test response time"),
+        BotCommand("time", "🕐 Lihat waktu saat ini"),
+        BotCommand("getid", "🆔 Dapatkan ID user/chat"),
         BotCommand("sangmata", "👁️ Cari user by username"),
         BotCommand("settings", "⚙️ Pengaturan (Admin)"),
         BotCommand("broadcast", "📢 Kirim pesan ke semua user (Admin)"),
         BotCommand("stats", "📊 Lihat statistik bot (Admin)"),
-        BotCommand("getid", "🆔 Dapatkan ID user/chat"),
         BotCommand("listusers", "👥 Lihat daftar user (Admin)"),
     ]
     await application.bot.set_my_commands(commands)
@@ -2089,12 +2203,15 @@ def main():
     # Daftarkan command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("info", info_command))
     application.add_handler(CommandHandler("guide", guide_command))
+    application.add_handler(CommandHandler("ping", ping_command))
+    application.add_handler(CommandHandler("time", time_command))
+    application.add_handler(CommandHandler("getid", getid_command))
     application.add_handler(CommandHandler("sangmata", sangmata_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("settings", settings_command))
-    application.add_handler(CommandHandler("getid", getid_command))
     application.add_handler(CommandHandler("listusers", listusers_command))
 
     # Daftarkan handler untuk interaksi menu dan settings
