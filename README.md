@@ -11,7 +11,7 @@ Selamat datang di versi terbaru Bot Info Freebet Gacor! Bot ini dirancang ulang 
 - **Welcome Message Kustom**: Atur teks, tombol, dan gambar untuk pesan selamat datang
 - **Auto Broadcast**: Kirim pesan berulang secara otomatis ke semua pengguna
 - **Manajemen Admin**: Tambah dan hapus admin dengan mudah
-- **Database JSON**: Semua data (user, settings) disimpan dalam satu file `bot_database.json`
+- **Database JSON/PostgreSQL**: Semua data (user, settings) disimpan dalam file JSON atau PostgreSQL untuk Heroku
 
 ### 🚀 **Fitur Canggih**
 - **Preview System**: Preview semua jenis pesan sebelum dikirim
@@ -59,13 +59,53 @@ Selamat datang di versi terbaru Bot Info Freebet Gacor! Bot ini dirancang ulang 
 
 ### **Opsi 2: Deploy ke Heroku (24/7 Online)**
 
-#### **Deploy Otomatis (One-Click)**
+#### **🚀 Create a New App (REKOMENDASI UNTUK BOT)**
+
+##### **⚠️ PENTING: Konfigurasi Database untuk Heroku**
+
+**Bot ini menggunakan file JSON sebagai database. Untuk Heroku, ada beberapa opsi:**
+
+###### **Opsi A: Heroku Postgres (REKOMENDASI - STABIL)**
+1. **Install Heroku Postgres Addon:**
+   ```bash
+   heroku addons:create heroku-postgresql:hobby-dev --app nama-app-anda
+   ```
+
+2. **Dapatkan DATABASE_URL:**
+   ```bash
+   heroku config:get DATABASE_URL --app nama-app-anda
+   ```
+
+3. **Set Environment Variable:**
+   ```bash
+   heroku config:set USE_POSTGRES=true --app nama-app-anda
+   heroku config:set DATABASE_URL=your_database_url_here --app nama-app-anda
+   ```
+
+###### **Opsi B: Persistent File Storage (GRATIS - DATA BISA HILANG)**
+- Bot akan menggunakan file JSON yang disimpan di `/tmp/`
+- **Data akan hilang saat restart dyno**
+- Cocok untuk testing atau data sementara
+- Set environment variable: `USE_POSTGRES=false`
+
+**💡 Rekomendasi: Gunakan Heroku Postgres untuk data yang stabil!**
+
 1. Klik tombol "Deploy to Heroku" di atas
-2. Masukkan nama aplikasi Heroku Anda
-3. Masukkan Telegram Bot Token Anda
-4. Klik "Deploy app"
-5. Tunggu proses deploy selesai (5-10 menit)
-6. Bot Anda sudah online 24/7!
+2. **Pilih "Create new app"** (bukan pipeline)
+3. Masukkan nama aplikasi Heroku Anda (contoh: `info-freebet-bot`)
+4. Masukkan Telegram Bot Token Anda di kolom `TOKEN`
+5. **Tambahkan database jika perlu** (Postgres recommended)
+6. Klik "Deploy app"
+7. Tunggu proses deploy selesai (5-10 menit)
+8. Bot akan otomatis berjalan 24/7
+
+#### **🔧 New Pipeline (UNTUK PROJECT KOMPLEKS)**
+- Pilih ini jika Anda punya staging dan production environment
+- Lebih kompleks untuk setup
+- Cocok untuk tim development besar
+- **TIDAK direkomendasikan** untuk bot sederhana
+
+**💡 Rekomendasi: Gunakan "Create new app" untuk kemudahan dan kecepatan!**
 
 #### **Deploy Manual**
 1. **Install Heroku CLI**
@@ -213,17 +253,201 @@ heroku restart --app nama-app-anda
 heroku ps --app nama-app-anda
 ```
 
-## 🔧 Environment Variables
+## 🔧 Environment Variables & Setup Bot
 
-Untuk production, set environment variables berikut:
+### **1. Setting Environment Variables di Heroku**
+
+#### **Via Heroku Dashboard:**
+1. **Masuk ke Heroku Dashboard** → Pilih aplikasi Anda
+2. **Klik tab "Settings"**
+3. **Klik "Reveal Config Vars"**
+4. **Tambahkan variables berikut:**
+
+| Key | Value | Keterangan |
+|-----|-------|------------|
+| `TOKEN` | `8067260760:AAF9qWxEtNBFe-b8afJHmVp8tMD9JlkE4LI` | **WAJIB** - Token bot Telegram |
+| `ADMIN_IDS` | `6592870669` | **Opsional** - ID admin (pisah dengan koma) |
+| `DB_FILE` | `bot_database.json` | **Opsional** - Nama file database |
+
+#### **Via Heroku CLI:**
+```bash
+# Set TOKEN (WAJIB)
+heroku config:set TOKEN=your_telegram_bot_token_here --app nama-app-anda
+
+# Set ADMIN_IDS (Opsional)
+heroku config:set ADMIN_IDS=123456789,987654321 --app nama-app-anda
+
+# Cek semua config vars
+heroku config --app nama-app-anda
+```
+
+### **2. Menjalankan Bot Setelah Deploy**
+
+#### **Cek Status Bot:**
+```bash
+# Cek apakah worker sedang berjalan
+heroku ps --app nama-app-anda
+
+# Jika tidak berjalan, start worker
+heroku ps:scale worker=1 --app nama-app-anda
+
+# Restart aplikasi
+heroku restart --app nama-app-anda
+```
+
+#### **Monitoring Bot:**
+```bash
+# Lihat logs real-time
+heroku logs --tail --app nama-app-anda
+
+# Lihat logs terbaru (100 baris)
+heroku logs -n 100 --app nama-app-anda
+
+# Cek status aplikasi
+heroku apps:info --app nama-app-anda
+```
+
+### **3. Testing Bot Setelah Deploy**
+
+1. **Buka Telegram** dan cari bot Anda
+2. **Kirim `/start`** untuk test welcome message
+3. **Kirim `/help`** untuk lihat semua command
+4. **Kirim `/settings`** untuk akses menu admin (jika Anda admin)
+
+### **4. Troubleshooting Jika Bot Tidak Berjalan**
+
+#### **Bot Tidak Merespon:**
+```bash
+# Cek logs untuk error
+heroku logs --tail --app nama-app-anda
+
+# Restart worker
+heroku ps:scale worker=0 --app nama-app-anda
+heroku ps:scale worker=1 --app nama-app-anda
+```
+
+#### **Error TOKEN:**
+```bash
+# Pastikan TOKEN sudah benar
+heroku config:get TOKEN --app nama-app-anda
+
+# Update TOKEN jika salah
+heroku config:set TOKEN=token_baru_anda --app nama-app-anda
+```
+
+#### **Database Error:**
+```bash
+# Cek apakah file database ada
+heroku run bash --app nama-app-anda
+ls -la bot_database.json
+exit
+```
+
+### **5. Update Bot (Jika Ada Perubahan Kode)**
+
+#### **Via Git:**
+```bash
+# Commit perubahan
+git add .
+git commit -m "Update bot features"
+
+# Push ke Heroku
+git push heroku main
+
+# Bot akan otomatis restart
+```
+
+#### **Via Heroku Dashboard:**
+1. **Masuk Heroku Dashboard** → Pilih aplikasi
+2. **Klik tab "Deploy"**
+3. **Connect ke GitHub repository**
+4. **Enable Automatic Deploys** (opsional)
+5. **Klik "Deploy Branch"**
+
+### **6. Backup & Restore Data**
+
+#### **Download Database:**
+```bash
+# Via Heroku CLI
+heroku run bash --app nama-app-anda
+cp bot_database.json /tmp/
+exit
+
+# Download file
+heroku ps:copy /tmp/bot_database.json --app nama-app-anda
+```
+
+#### **Upload Database Baru:**
+```bash
+# Via Heroku Dashboard
+# 1. Masuk aplikasi → Resources
+# 2. Klik "More" → "Run console"
+# 3. Upload file database via browser
+```
+
+### **7. Monitoring & Maintenance**
+
+#### **Daily Checks:**
+```bash
+# Cek uptime
+heroku apps:info --app nama-app-anda | grep "Created"
+
+# Cek dyno usage
+heroku ps --app nama-app-anda
+
+# Backup database mingguan
+heroku run "cp bot_database.json backup_$(date +%Y%m%d).json" --app nama-app-anda
+```
+
+#### **Performance Monitoring:**
+- **Response Time**: Bot harus merespon dalam 1-2 detik
+- **Memory Usage**: Monitor RAM usage di Heroku dashboard
+- **Error Rate**: Cek logs untuk error yang berulang
+
+### **8. Cost Management**
+
+#### **Free Tier Limits:**
+- **550 jam/bulan** untuk hobby dyno
+- **Reset setiap bulan** pada tanggal 1
+- **Sleep setelah 30 menit** tidak aktif
+
+#### **Upgrade ke Paid (Jika Perlu):**
+```bash
+# Upgrade ke hobby dyno (7$/bulan)
+heroku ps:resize worker=hobby --app nama-app-anda
+
+# Cek cost saat ini
+heroku apps:info --app nama-app-anda | grep "Dyno"
+```
+
+### **9. Emergency Stop & Start**
 
 ```bash
-# Wajib
-TOKEN=your_telegram_bot_token_here
+# Stop bot sementara
+heroku ps:scale worker=0 --app nama-app-anda
 
-# Opsional
-ADMIN_IDS=123456789,987654321
-DB_FILE=bot_database.json
+# Start bot kembali
+heroku ps:scale worker=1 --app nama-app-anda
+
+# Force restart
+heroku restart --app nama-app-anda
+```
+
+### **10. Logs Analysis**
+
+#### **Cek Error Logs:**
+```bash
+# Filter hanya error
+heroku logs --app nama-app-anda | grep "ERROR"
+
+# Cek aktivitas bot
+heroku logs --app nama-app-anda | grep "Bot started\|Broadcast\|Welcome"
+```
+
+#### **Monitor User Activity:**
+```bash
+# Cek jumlah user yang aktif
+heroku run "python -c \"import json; db=json.load(open('bot_database.json')); print(f'Users: {len(db.get(\"users\", []))}')\"" --app nama-app-anda
 ```
 
 ## 📊 Monitoring & Maintenance

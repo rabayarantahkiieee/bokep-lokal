@@ -524,20 +524,76 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
         return
-        
-    db = load_db()
-    start_time = datetime.fromisoformat(db.get("bot_info", {}).get("start_time"))
-    uptime = datetime.now() - start_time
 
-    stats_text = f"""
+    try:
+        db = load_db()
+
+        # Hitung uptime dengan aman
+        uptime_str = "N/A"
+        try:
+            start_time_str = db.get("bot_info", {}).get("start_time")
+            if start_time_str:
+                start_time = datetime.fromisoformat(start_time_str)
+                uptime = datetime.now() - start_time
+
+                # Format uptime yang lebih readable
+                days = uptime.days
+                hours, remainder = divmod(uptime.seconds, 3600)
+                minutes, seconds = divmod(remainder, 60)
+
+                if days > 0:
+                    uptime_str = f"{days}d {hours}h {minutes}m"
+                elif hours > 0:
+                    uptime_str = f"{hours}h {minutes}m {seconds}s"
+                else:
+                    uptime_str = f"{minutes}m {seconds}s"
+        except Exception as e:
+            print(f"Error calculating uptime: {e}")
+            uptime_str = "Error"
+
+        # Hitung statistik lainnya
+        users = db.get('users', [])
+        admins = db.get('admins', [])
+        user_logs = db.get('user_logs', [])
+        custom_commands = db.get('custom_commands', {})
+        scheduled_messages = db.get('scheduled_messages', [])
+
+        # Hitung aktivitas hari ini
+        today = datetime.now().date()
+        today_logs = [
+            log for log in user_logs
+            if datetime.fromisoformat(log.get('timestamp', '')).date() == today
+        ]
+
+        stats_text = f"""
 📊 **STATISTIK BOT**
 
-- 👥 Total Pengguna: `{len(db.get('users', []))}`
-- 👑 Total Admin: `{len(db.get('admins', []))}`
-- ⚙️ Auto Broadcast: `{'Aktif' if db.get('auto_broadcast', {}).get('enabled') else 'Mati'}`
-- ⏰ Uptime: `{str(uptime).split('.')[0]}`
-    """
-    await update.message.reply_text(stats_text, parse_mode=ParseMode.MARKDOWN)
+👥 *USER MANAGEMENT*
+• Total Pengguna: `{len(users)}`
+• Total Admin: `{len(admins)}`
+• User Baru Hari Ini: `{len(set(log.get('user_id') for log in today_logs))}`
+
+⚙️ *FITUR BOT*
+• Auto Broadcast: `{'🟢 Aktif' if db.get('auto_broadcast', {}).get('enabled') else '🔴 Mati'}`
+• Anti-Spam: `{'🟢 Aktif' if db.get('anti_spam', {}).get('enabled') else '🔴 Mati'}`
+• Group Welcome: `{'🟢 Aktif' if db.get('group_welcome', {}).get('enabled') else '🔴 Mati'}`
+
+📝 *CONTENT MANAGEMENT*
+• Custom Commands: `{len(custom_commands)}`
+• Scheduled Messages: `{len(scheduled_messages)}`
+• Total Logs: `{len(user_logs)}`
+
+⏰ *SYSTEM INFO*
+• Uptime: `{uptime_str}`
+• Aktivitas Hari Ini: `{len(today_logs)}`
+• Last Auto Broadcast: `{db.get('auto_broadcast', {}).get('last_sent', 'Belum pernah')[:19] if db.get('auto_broadcast', {}).get('last_sent') else 'Belum pernah'}`
+        """
+
+        await update.message.reply_text(stats_text.strip(), parse_mode=ParseMode.MARKDOWN)
+
+    except Exception as e:
+        print(f"Error in stats_command: {e}")
+        await update.message.reply_text("❌ Terjadi error saat mengambil statistik bot.", parse_mode=ParseMode.MARKDOWN)
 
 
 async def getid_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
