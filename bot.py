@@ -16,6 +16,7 @@ Fitur Utama:
 import os
 import json
 import asyncio
+import time
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
@@ -80,22 +81,61 @@ DEFAULT_DB = {
 
 # --- FUNGSI DATABASE (LOAD & SAVE) ---
 def load_db():
-    """Memuat database dari file JSON."""
+    """Memuat database dari file JSON dengan cache untuk performance."""
+    global DB_CACHE, CACHE_TIME
+
+    import time
+    current_time = time.time()
+
+    # Gunakan cache jika belum expired (30 detik untuk operasi normal)
+    if DB_CACHE is not None and current_time - CACHE_TIME < 30:
+        return DB_CACHE.copy()
+
+    # Load dari file
     if os.path.exists(DB_FILE):
-        with open(DB_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return DEFAULT_DB
+        try:
+            with open(DB_FILE, 'r', encoding='utf-8') as f:
+                DB_CACHE = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError):
+            DB_CACHE = DEFAULT_DB.copy()
+    else:
+        DB_CACHE = DEFAULT_DB.copy()
+
+    CACHE_TIME = current_time
+    return DB_CACHE.copy()
 
 def save_db(db):
-    """Menyimpan database ke file JSON."""
+    """Menyimpan database ke file JSON dan clear cache."""
+    global DB_CACHE, CACHE_TIME, ADMIN_CACHE
+
+    # Simpan ke file
     with open(DB_FILE, 'w', encoding='utf-8') as f:
-        json.dump(db, f, indent=4)
+        json.dump(db, f, indent=4, ensure_ascii=False)
+
+    # Update cache
+    DB_CACHE = db.copy()
+    ADMIN_CACHE = set(db.get("admins", []))
+    CACHE_TIME = time.time()
+
+# --- CACHE UNTUK PERFORMANCE ---
+ADMIN_CACHE = {}
+DB_CACHE = None
+CACHE_TIME = 0
 
 # --- FUNGSI HELPER ---
 def is_admin(user_id: int) -> bool:
-    """Mengecek apakah user adalah admin."""
-    db = load_db()
-    return user_id in db.get("admins", [])
+    """Mengecek apakah user adalah admin dengan cache."""
+    global ADMIN_CACHE, CACHE_TIME
+
+    # Cek cache jika belum expired (5 menit)
+    import time
+    current_time = time.time()
+    if current_time - CACHE_TIME > 300:  # 5 menit
+        db = load_db()
+        ADMIN_CACHE = set(db.get("admins", []))
+        CACHE_TIME = current_time
+
+    return user_id in ADMIN_CACHE
 
 def is_main_admin(user_id: int) -> bool:
     """Mengecek apakah user adalah admin utama."""
@@ -766,12 +806,28 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await update.callback_query.edit_message_text(settings_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         except Exception as e:
-            if "not modified" in str(e).lower():
+            error_msg = str(e).lower()
+            if "not modified" in error_msg:
                 # Pesan sama, abaikan error
                 pass
+            elif "message is not modified" in error_msg:
+                # Pesan sama persis, abaikan
+                pass
+            elif "message to edit not found" in error_msg:
+                # Message sudah dihapus, kirim pesan baru
+                try:
+                    await update.callback_query.message.reply_text("🔄 " + settings_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                except Exception as e2:
+                    print(f"Fallback message failed: {e2}")
             else:
-                # Error lain, lempar ulang
-                raise e
+                # Error lain, coba kirim pesan baru
+                try:
+                    await update.callback_query.message.reply_text("⚠️ Terjadi kesalahan, mengirim ulang menu...", parse_mode=ParseMode.MARKDOWN)
+                    await asyncio.sleep(1)
+                    await update.callback_query.message.reply_text(settings_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                except Exception as e2:
+                    print(f"Error recovery failed: {e2}")
+                    raise e
     else:
         await update.message.reply_text(settings_text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
@@ -780,12 +836,22 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menangani semua interaksi dari Inline Keyboard."""
     query = update.callback_query
 
-    # Handle callback query timeout gracefully
-    try:
-        await query.answer(cache_time=1) # Respon cepat
-    except Exception as e:
-        print(f"Callback query answer failed: {e}")
-        # Continue processing even if answer fails
+    # Handle callback query timeout gracefully dengan retry
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            await query.answer(cache_time=1) # Respon cepat
+            break  # Berhasil, keluar dari loop
+        except Exception as e:
+            if attempt == max_retries - 1:
+                print(f"Callback query answer failed after {max_retries} attempts: {e}")
+                # Kirim pesan error ke user jika memungkinkan
+                try:
+                    await query.message.reply_text("⚠️ Sistem sedang sibuk, silakan coba lagi dalam beberapa detik.")
+                except:
+                    pass
+                return
+            await asyncio.sleep(0.5)  # Tunggu sebelum retry
 
     callback_data = query.data
     db = load_db()
@@ -830,26 +896,36 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             button_count = len(config.get("buttons", []))
             text = f"*{title}*\n\n- *Foto*: {photo_status}\n- *Tombol*: {button_count}\n\nPilih aksi:"
             keyboard = [
-                [InlineKeyboardButton("👀 Preview", callback_data=f"preview_{key}")],
-                [InlineKeyboardButton("Ubah Teks", callback_data=f"set_text_{key}")],
-                [InlineKeyboardButton("Ubah Foto", callback_data=f"set_photo_{key}")],
-                [InlineKeyboardButton("Tambah Tombol", callback_data=f"add_button_{key}")],
-                [InlineKeyboardButton("Hapus Tombol", callback_data=f"clear_buttons_{key}")],
-                [InlineKeyboardButton("⬅️ Kembali", callback_data="main_menu")]
+                [InlineKeyboardButton("👀 👀 Preview Pesan", callback_data=f"preview_{key}")],
+                [InlineKeyboardButton("✏️ ✏️ Ubah Teks", callback_data=f"set_text_{key}")],
+                [InlineKeyboardButton("🖼️ 🖼️ Ubah Foto", callback_data=f"set_photo_{key}")],
+                [InlineKeyboardButton("➕ ➕ Tambah Tombol", callback_data=f"add_button_{key}")],
+                [InlineKeyboardButton("🗑️ 🗑️ Hapus Semua Tombol", callback_data=f"clear_buttons_{key}")],
+                [InlineKeyboardButton("⬅️ ⬅️ Kembali ke Menu", callback_data="main_menu")],
+                [InlineKeyboardButton("🔄 🔄 Refresh Menu", callback_data=f"menu_{key}")]
             ]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"set_text_{key}":
             context.user_data['state'] = f"awaiting_text_{key}"
-            await query.edit_message_text("✍️ Silakan kirim *teks baru*.", parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text("✍️ ✍️ Silakan kirim *teks baru* untuk pesan ini.\n\n💡 *Support placeholder:* `{NAME}`, `{USERNAME}`, `{ID}`, `{DATE}`", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("📚 📚 Lihat Guide", callback_data="show_guide")]
+            ]), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"set_photo_{key}":
             context.user_data['state'] = f"awaiting_photo_{key}"
-            await query.edit_message_text("🖼️ Silakan *kirim foto baru*.", parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text("🖼️ 🖼️ Silakan *kirim foto baru* untuk pesan ini.\n\n📸 Kirim gambar langsung ke chat ini.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("🔄 🔄 Refresh", callback_data=f"set_photo_{key}")]
+            ]), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"add_button_{key}":
             context.user_data['state'] = f"awaiting_button_{key}"
-            await query.edit_message_text("➕ Silakan kirim data tombol dengan format:\n`Nama Tombol | https://link.com`", parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text("➕ ➕ Silakan kirim data tombol dengan format:\n`Nama Tombol | https://link.com`\n\n📝 *Contoh:*\n`Join Group | https://t.me/group`", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("📋 📋 Lihat Contoh", callback_data="show_button_example")]
+            ]), parse_mode=ParseMode.MARKDOWN)
             return
         elif callback_data == f"clear_buttons_{key}":
             if key == "autobroadcast_msg":
@@ -864,7 +940,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     db[message_key] = DEFAULT_DB.get(message_key, {"text": "", "photo": None, "buttons": []})
                 db[message_key]["buttons"] = []
             save_db(db)
-            await query.edit_message_text("✅ Semua tombol telah dihapus.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]))
+            await query.edit_message_text("✅ ✅ Semua tombol telah dihapus!", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("➕ ➕ Tambah Tombol Baru", callback_data=f"add_button_{key}")],
+                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            ]))
             return
         elif callback_data == f"preview_{key}":
             # Preview pesan
@@ -903,9 +983,25 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     await context.bot.send_message(chat_id=query.from_user.id, text="❌ Tidak ada konten untuk di-preview.")
 
-                await query.edit_message_text("✅ Preview telah dikirim ke chat pribadi Anda.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]))
+                await query.edit_message_text("✅ Preview telah dikirim ke chat pribadi Anda.", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")],
+                    [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"preview_{key}")],
+                    [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+                ]))
             except Exception as e:
-                await query.edit_message_text(f"❌ Gagal mengirim preview: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")]]))
+                error_msg = str(e)
+                if "chat not found" in error_msg.lower():
+                    error_text = "❌ Chat pribadi tidak ditemukan. Pastikan Anda sudah memulai chat dengan bot."
+                elif "bot was blocked" in error_msg.lower():
+                    error_text = "❌ Bot diblokir. Silakan unblock bot terlebih dahulu."
+                else:
+                    error_text = f"❌ Gagal mengirim preview: {error_msg[:100]}..."
+
+                await query.edit_message_text(error_text, reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"preview_{key}")],
+                    [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")],
+                    [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+                ]))
             return
 
     # Menu Auto Broadcast (Settings)
@@ -954,18 +1050,30 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif callback_data == "admin_add":
         if not is_main_admin(query.from_user.id):
-            await query.edit_message_text("❌ Hanya admin utama yang bisa menambah admin.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_admin")]]))
+            await query.edit_message_text("❌ ❌ Anda bukan admin utama!\n\nHanya admin utama yang bisa mengelola admin.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="menu_admin")],
+                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            ]))
             return
         context.user_data['state'] = "awaiting_admin_add"
-        await query.edit_message_text("➕ Silakan kirim *User ID* admin yang baru.", parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text("➕ ➕ TAMBAH ADMIN BARU\n\nSilakan kirim *User ID* yang ingin dijadikan admin.\n\n💡 *Contoh:* `123456789`\n\n⚠️ *Pastikan User ID benar!*", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data="menu_admin")],
+            [InlineKeyboardButton("📋 📋 Lihat Admin Saat Ini", callback_data="menu_admin")]
+        ]), parse_mode=ParseMode.MARKDOWN)
         return
 
     elif callback_data == "admin_del":
         if not is_main_admin(query.from_user.id):
-            await query.edit_message_text("❌ Hanya admin utama yang bisa menghapus admin.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_admin")]]))
+            await query.edit_message_text("❌ ❌ Anda bukan admin utama!\n\nHanya admin utama yang bisa mengelola admin.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="menu_admin")],
+                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            ]))
             return
         context.user_data['state'] = "awaiting_admin_del"
-        await query.edit_message_text("➖ Silakan kirim *User ID* admin yang ingin dihapus.", parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text("➖ ➖ HAPUS ADMIN\n\nSilakan kirim *User ID* admin yang ingin dihapus.\n\n💡 *Contoh:* `123456789`\n\n⚠️ *Admin utama tidak bisa dihapus!*", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data="menu_admin")],
+            [InlineKeyboardButton("📋 📋 Lihat Admin Saat Ini", callback_data="menu_admin")]
+        ]), parse_mode=ParseMode.MARKDOWN)
         return
 
     # Menu Backup & Restore
@@ -1419,6 +1527,67 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Note: Actual restart would require external script or supervisor
         return
 
+    elif callback_data == "show_guide":
+        guide_text = """
+📚 *GUIDE PLACEHOLDER PESAN*
+
+Placeholder berikut bisa digunakan di semua pesan:
+
+👤 *User Info:*
+• `{NAME}` - Nama depan user
+• `{USERNAME}` - Username dengan @
+• `{ID}` - ID Telegram user
+
+📅 *Tanggal & Waktu:*
+• `{DATE}` - Tanggal (DD/MM/YYYY)
+• `{TIME}` - Waktu (HH:MM:SS)
+• `{FULLDATE}` - Tanggal & waktu lengkap
+• `{DAY}` - Hari (Monday, Tuesday, dll.)
+• `{MONTH}` - Bulan (January, February, dll.)
+• `{YEAR}` - Tahun
+
+💡 *Contoh Penggunaan:*
+```
+SELAMAT DATANG {NAME}!
+Username: {USERNAME}
+ID: {ID}
+Tanggal: {DATE}
+```
+        """
+        await query.edit_message_text(guide_text.strip(), reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="settings")],
+            [InlineKeyboardButton("📝 📝 Mulai Ubah Teks", callback_data="set_text_welcome")]
+        ]), parse_mode=ParseMode.MARKDOWN)
+        return
+
+    elif callback_data == "show_button_example":
+        example_text = """
+📋 *CONTOH FORMAT TOMBOL*
+
+Format yang benar:
+`Nama Tombol | https://link.com`
+
+✅ *Contoh yang benar:*
+• `Join Group | https://t.me/groupname`
+• `Website | https://example.com`
+• `Instagram | https://instagram.com/username`
+
+❌ *Contoh yang salah:*
+• `Join Group https://t.me/groupname` (tanpa |)
+• `Join Group | t.me/groupname` (tanpa https://)
+• `join group | https://t.me/groupname` (gunakan kapital)
+
+💡 *Tips:*
+• Nama tombol maksimal 20 karakter
+• Pastikan link valid dan dimulai dengan https://
+• Gunakan emoji di awal nama tombol untuk menarik
+        """
+        await query.edit_message_text(example_text.strip(), reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data="settings")],
+            [InlineKeyboardButton("➕ ➕ Mulai Tambah Tombol", callback_data="add_button_welcome")]
+        ]), parse_mode=ParseMode.MARKDOWN)
+        return
+
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menangani pesan teks biasa untuk melanjutkan proses settings."""
     user_id = update.effective_user.id
@@ -1474,45 +1643,78 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Menangani input teks
     if state.startswith("awaiting_text_"):
         key = state.replace("awaiting_text_", "")
-        if key == "welcome":
-            if "welcome_message" not in db:
-                db["welcome_message"] = DEFAULT_DB["welcome_message"]
-            db["welcome_message"]["text"] = text_input
-        elif key == "broadcast":
-            if "broadcast_message" not in db:
-                db["broadcast_message"] = DEFAULT_DB["broadcast_message"]
-            db["broadcast_message"]["text"] = text_input
-        elif key == "autobroadcast_msg":
-            if "auto_broadcast" not in db:
-                db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
-            if "message" not in db["auto_broadcast"] or not isinstance(db["auto_broadcast"]["message"], dict):
-                db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
-            db["auto_broadcast"]["message"]["text"] = text_input
-        await update.message.reply_text("✅ Teks berhasil diubah.")
+        try:
+            if key == "welcome":
+                if "welcome_message" not in db:
+                    db["welcome_message"] = DEFAULT_DB["welcome_message"]
+                db["welcome_message"]["text"] = text_input
+            elif key == "broadcast":
+                if "broadcast_message" not in db:
+                    db["broadcast_message"] = DEFAULT_DB["broadcast_message"]
+                db["broadcast_message"]["text"] = text_input
+            elif key == "autobroadcast_msg":
+                if "auto_broadcast" not in db:
+                    db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
+                if "message" not in db["auto_broadcast"] or not isinstance(db["auto_broadcast"]["message"], dict):
+                    db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
+                db["auto_broadcast"]["message"]["text"] = text_input
+
+            save_db(db)
+            await update.message.reply_text("✅ ✅ Teks berhasil diubah!", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("👀 👀 Preview Pesan", callback_data=f"preview_{key}")],
+                [InlineKeyboardButton("⬅️ ⬅️ Kembali ke Menu", callback_data=f"menu_{key}")],
+                [InlineKeyboardButton("🏠 🏠 Menu Utama", callback_data="main_menu")]
+            ]))
+        except Exception as e:
+            await update.message.reply_text(f"❌ ❌ Gagal menyimpan teks: {str(e)[:100]}...\n\nSilakan coba lagi.", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"set_text_{key}")],
+                [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")]
+            ]))
     
     # Menangani input tombol
     elif state.startswith("awaiting_button_"):
         key = state.replace("awaiting_button_", "")
         parts = text_input.split(" | ")
         if len(parts) != 2:
-            await update.message.reply_text("❌ Format salah. Gunakan: `Nama Tombol | https://link.com`", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text("❌ ❌ Format salah!\n\nGunakan format:\n`Nama Tombol | https://link.com`\n\n💡 *Contoh yang benar:*\n`Join Group | https://t.me/groupname`", reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📋 📋 Lihat Contoh", callback_data="show_button_example")],
+                [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"add_button_{key}")],
+                [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")]
+            ]), parse_mode=ParseMode.MARKDOWN)
         else:
             button_text, url = parts
-            if key == "welcome":
-                if "welcome_message" not in db:
-                    db["welcome_message"] = DEFAULT_DB["welcome_message"]
-                db["welcome_message"]["buttons"].append({"text": button_text, "url": url})
-            elif key == "broadcast":
-                if "broadcast_message" not in db:
-                    db["broadcast_message"] = DEFAULT_DB["broadcast_message"]
-                db["broadcast_message"]["buttons"].append({"text": button_text, "url": url})
-            elif key == "autobroadcast_msg":
-                if "auto_broadcast" not in db:
-                    db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
-                if "message" not in db["auto_broadcast"] or not isinstance(db["auto_broadcast"]["message"], dict):
-                    db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
-                db["auto_broadcast"]["message"]["buttons"].append({"text": button_text, "url": url})
-            await update.message.reply_text("✅ Tombol baru berhasil ditambahkan.")
+            try:
+                # Validasi URL
+                if not url.startswith(('http://', 'https://', 'tg://')):
+                    url = 'https://' + url.lstrip('https://').lstrip('http://')
+
+                if key == "welcome":
+                    if "welcome_message" not in db:
+                        db["welcome_message"] = DEFAULT_DB["welcome_message"]
+                    db["welcome_message"]["buttons"].append({"text": button_text, "url": url})
+                elif key == "broadcast":
+                    if "broadcast_message" not in db:
+                        db["broadcast_message"] = DEFAULT_DB["broadcast_message"]
+                    db["broadcast_message"]["buttons"].append({"text": button_text, "url": url})
+                elif key == "autobroadcast_msg":
+                    if "auto_broadcast" not in db:
+                        db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
+                    if "message" not in db["auto_broadcast"] or not isinstance(db["auto_broadcast"]["message"], dict):
+                        db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
+                    db["auto_broadcast"]["message"]["buttons"].append({"text": button_text, "url": url})
+
+                save_db(db)
+                await update.message.reply_text(f"✅ ✅ Tombol '{button_text}' berhasil ditambahkan!\n\n🔗 URL: {url}", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ ➕ Tambah Lagi", callback_data=f"add_button_{key}")],
+                    [InlineKeyboardButton("👀 👀 Preview", callback_data=f"preview_{key}")],
+                    [InlineKeyboardButton("⬅️ ⬅️ Kembali", callback_data=f"menu_{key}")]
+                ]))
+            except Exception as e:
+                await update.message.reply_text(f"❌ ❌ Gagal menambahkan tombol: {str(e)[:100]}...\n\nSilakan coba lagi dengan format yang benar.", reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("📋 📋 Lihat Contoh", callback_data="show_button_example")],
+                    [InlineKeyboardButton("🔄 🔄 Coba Lagi", callback_data=f"add_button_{key}")],
+                    [InlineKeyboardButton("⬅️ ⬅️ Batal", callback_data=f"menu_{key}")]
+                ]))
 
     # Menangani input lain-lain
     elif state == "awaiting_autobc_interval":
