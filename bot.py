@@ -1132,8 +1132,25 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     elif callback_data == "autobc_toggle":
-        db["auto_broadcast"]["enabled"] = not db["auto_broadcast"].get("enabled", False)
+        if "auto_broadcast" not in db:
+            db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
+        current_status = db["auto_broadcast"].get("enabled", False)
+        db["auto_broadcast"]["enabled"] = not current_status
         save_db(db)
+
+        # Restart job queue jika diaktifkan
+        if not current_status and hasattr(context, 'application') and context.application.job_queue:
+            # Hapus job yang ada
+            jobs = context.application.job_queue.jobs()
+            for job in jobs:
+                if job.name == "auto_broadcast":
+                    job.schedule_removal()
+
+            # Tambahkan job baru
+            interval = db["auto_broadcast"].get("interval_minutes", 60)
+            context.application.job_queue.run_repeating(auto_broadcast_task, interval=interval * 60, first=10, name="auto_broadcast")
+            print(f"Auto broadcast diaktifkan dengan interval {interval} menit")
+
         await callback_handler(update, context) # Refresh menu
         return
         
@@ -1343,7 +1360,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data == "antispam_toggle":
         if "anti_spam" not in db:
             db["anti_spam"] = DEFAULT_DB["anti_spam"]
-        db["anti_spam"]["enabled"] = not db["anti_spam"].get("enabled", False)
+        current_status = db["anti_spam"].get("enabled", False)
+        db["anti_spam"]["enabled"] = not current_status
         save_db(db)
         await callback_handler(update, context)  # Refresh menu
         return
@@ -1483,7 +1501,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data == "toggle_group_welcome":
         if "group_welcome" not in db:
             db["group_welcome"] = DEFAULT_DB["group_welcome"]
-        db["group_welcome"]["enabled"] = not db["group_welcome"].get("enabled", False)
+        current_status = db["group_welcome"].get("enabled", False)
+        db["group_welcome"]["enabled"] = not current_status
         save_db(db)
         await callback_handler(update, context)  # Refresh menu
         return
