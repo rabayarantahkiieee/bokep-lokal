@@ -1,15 +1,10 @@
 {
-  "name": "Info Freebet Gacor Bot",
-  "description": "Bot Telegram multifungsi untuk info freebet gacor dengan fitur lengkap",
-  "repository": "https://github.com/yourusername/info-freebet-gacor-bot",
+  "name": "Bokep Lokal",
+  "description": "Bot Telegram multifungsi",
+  "repository": "https://github.com/rabayarantahkiieee/bokep-lokal",
   "logo": "https://telegram.org/img/t_logo.png",
-  "keywords": ["telegram", "bot", "python", "freebet", "gacor"],
-  "env": {
-    "TOKEN": {
-      "description": "Telegram Bot Token dari @BotFather",
-      "required": true
-    }
-  },
+  "keywords": ["telegram", "bot", "python"],
+  "env": {},
   "buildpacks": [
     {
       "url": "heroku/python"
