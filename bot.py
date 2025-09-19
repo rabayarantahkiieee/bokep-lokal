@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-BOT INFO FREEBET GACOR - V3 (Multifungsi & Stabil)
+BOT BOKEP LOKALL - V3 (Multifungsi & Stabil)
 Dibuat oleh Kilo Code
 
 Fitur Utama:
@@ -24,7 +24,7 @@ from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
 # --- KONFIGURASI UTAMA ---
-TOKEN = "8067260760:AAF9qWxEtNBFe-b8afJHmVp8tMD9JlkE4LI"
+TOKEN = "8265804157:AAHpR-Mc6bZN3BYDlDXXkisr34s0BI0t7r8"
 ADMIN_IDS = [6592870669]  # Admin utama, bisa ditambah via command
 
 # --- NAMA FILE UNTUK MENYIMPAN DATA ---
