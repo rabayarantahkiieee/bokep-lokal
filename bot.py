@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-BOT BOKEP LOKALL - V3 (Multifungsi & Stabil)
+BOT BOKEP LOKAL - V3 (Multifungsi & Stabil)
 Dibuat oleh Kilo Code
 
 Fitur Utama:
@@ -682,7 +682,7 @@ async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 👋 *Halo {user.first_name or 'User'}!*
 
-🤖 *Bot Info Freebet Gacor*
+🤖 *Bot Bokep Lokal*
 • Dibuat dengan ❤️ oleh Kilo Code
 • Versi: 3.0 (Multifungsi & Stabil)
 • Bahasa: Indonesia

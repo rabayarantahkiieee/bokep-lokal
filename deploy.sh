@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script Deploy Info Freebet Gacor Bot ke Heroku
+# Script Deploy Bokep Lokal Bot ke Heroku
 # Dibuat oleh Kilo Code
 
 echo "🚀 Memulai proses deploy ke Heroku..."
@@ -22,7 +22,7 @@ if ! heroku auth:whoami &> /dev/null; then
 fi
 
 # Input nama aplikasi Heroku
-read -p "📝 Masukkan nama aplikasi Heroku (contoh: info-freebet-bot): " APP_NAME
+read -p "📝 Masukkan nama aplikasi Heroku (contoh: bokep-lokal-bot): " APP_NAME
 
 if [ -z "$APP_NAME" ]; then
     echo "❌ Nama aplikasi tidak boleh kosong!"

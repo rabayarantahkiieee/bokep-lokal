@@ -1,4 +1,4 @@
-# Contributing to Info Freebet Gacor Bot
+# Contributing to Bokep Lokal Bot
 
 Terima kasih atas minat Anda untuk berkontribusi pada proyek ini! Kami sangat menghargai bantuan dari komunitas.
 
@@ -9,8 +9,8 @@ Fork repository ini ke akun GitHub Anda.
 
 ### 2. Clone Repository
 ```bash
-git clone https://github.com/yourusername/info-freebet-gacor-bot.git
-cd info-freebet-gacor-bot
+git clone https://github.com/rabayarantahkiieee/bokep-lokal.git
+cd bokep-lokal
 ```
 
 ### 3. Buat Branch Baru

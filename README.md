@@ -1,8 +1,8 @@
-# 🤖 BOT INFO FREEBET GACOR - V3 (Multifungsi & Stabil)
+# 🤖 BOT BOKEP LOKAL - V3 (Multifungsi & Stabil)
 
-[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/yourusername/info-freebet-gacor-bot)
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/rabayarantahkiieee/bokep-lokal)
 
-Selamat datang di versi terbaru Bot Info Freebet Gacor! Bot ini dirancang ulang dari awal untuk menjadi lebih stabil, multifungsi, dan mudah digunakan.
+Selamat datang di versi terbaru Bot Bokep Lokal! Bot ini dirancang ulang dari awal untuk menjadi lebih stabil, multifungsi, dan mudah digunakan.
 
 ## ✨ Fitur Unggulan
 
@@ -40,7 +40,7 @@ Selamat datang di versi terbaru Bot Info Freebet Gacor! Bot ini dirancang ulang 
    - Pastikan Anda mencentang "Add Python to PATH" saat instalasi.
 
 2. **Buka Terminal**
-   - Masuk ke folder `info_freebet_gacor` ini melalui terminal atau command prompt.
+   - Masuk ke folder `bokep-lokal` ini melalui terminal atau command prompt.
 
 3. **Install Dependencies**
    - Jalankan command berikut untuk menginstall library yang dibutuhkan:
@@ -92,7 +92,7 @@ Selamat datang di versi terbaru Bot Info Freebet Gacor! Bot ini dirancang ulang 
 
 1. Klik tombol "Deploy to Heroku" di atas
 2. **Pilih "Create new app"** (bukan pipeline)
-3. Masukkan nama aplikasi Heroku Anda (contoh: `info-freebet-bot`)
+3. Masukkan nama aplikasi Heroku Anda (contoh: `bokep-lokal-bot`)
 4. Masukkan Telegram Bot Token Anda di kolom `TOKEN`
 5. **Tambahkan database jika perlu** (Postgres recommended)
 6. Klik "Deploy app"
@@ -116,8 +116,8 @@ Selamat datang di versi terbaru Bot Info Freebet Gacor! Bot ini dirancang ulang 
 
 2. **Clone & Setup**
    ```bash
-   git clone https://github.com/yourusername/info-freebet-gacor-bot.git
-   cd info-freebet-gacor-bot
+   git clone https://github.com/rabayarantahkiieee/bokep-lokal.git
+   cd bokep-lokal
    heroku create nama-app-anda
    ```
 

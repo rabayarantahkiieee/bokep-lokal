@@ -3,7 +3,7 @@
 
 """
 DATABASE MODULE - PostgreSQL + Redis Integration
-Dibuat untuk Bot Info Freebet Gacor
+Dibuat untuk Bot Bokep Lokal
 """
 
 import os
