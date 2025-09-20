@@ -30,25 +30,7 @@ from database import get_db
 # --- KONFIGURASI UTAMA ---
 TOKEN = os.getenv("TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "YOUR_ADMIN_ID_HERE")
-
-# Parse admin IDs dengan fallback
-if ADMIN_IDS_STR and ADMIN_IDS_STR != "YOUR_ADMIN_ID_HERE":
-    ADMIN_IDS = [int(admin_id.strip()) for admin_id in ADMIN_IDS_STR.split(',') if admin_id.strip()]
-else:
-    ADMIN_IDS = []  # Kosong jika belum diset
-
-# Jika tidak ada admin yang diset, gunakan admin pertama dari database sebagai fallback
-if not ADMIN_IDS:
-    try:
-        # Coba ambil admin pertama dari database
-        admins_from_db = db.get_admins()
-        if admins_from_db:
-            ADMIN_IDS = [admins_from_db[0]]  # Admin pertama sebagai main admin
-            print(f"✅ Menggunakan admin dari database: {ADMIN_IDS}")
-        else:
-            print("⚠️ Tidak ada admin yang diset! Silakan set ADMIN_IDS di environment variable.")
-    except:
-        print("⚠️ Database belum siap, admin akan diset nanti.")
+ADMIN_IDS = [int(admin_id) for admin_id in ADMIN_IDS_STR.split(',') if admin_id]
 
 # --- DATABASE MANAGER ---
 db = get_db()
@@ -151,31 +133,6 @@ def is_admin(user_id: int) -> bool:
 def is_main_admin(user_id: int) -> bool:
     """Mengecek apakah user adalah admin utama."""
     return user_id in ADMIN_IDS
-
-def setup_first_admin_if_needed(user_id: int) -> bool:
-    """Setup admin pertama jika belum ada admin sama sekali."""
-    global ADMIN_IDS
-
-    # Jika sudah ada admin, skip
-    if ADMIN_IDS:
-        return False
-
-    try:
-        # Cek apakah user sudah ada di database sebagai admin
-        admins_from_db = db.get_admins()
-        if admins_from_db:
-            ADMIN_IDS = [admins_from_db[0]]  # Set admin pertama sebagai main admin
-            return user_id == ADMIN_IDS[0]
-
-        # Jika tidak ada admin di database, set user ini sebagai admin pertama
-        db.add_admin(user_id, user_id)
-        ADMIN_IDS = [user_id]
-        print(f"✅ Admin pertama berhasil diset: {user_id}")
-        return True
-
-    except Exception as e:
-        print(f"❌ Error setting up first admin: {e}")
-        return False
 
 def replace_placeholders(text: str, user) -> str:
     """Mengganti placeholder dalam teks dengan data user."""
@@ -433,34 +390,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Log aktivitas user
     log_user_activity(user, "start_command", "User menggunakan /start")
 
-    # Cek apakah ini admin pertama
-    try:
-        admins = db.get_admins()
-        if not admins:
-            # Belum ada admin, beri tahu user untuk setup
-            setup_text = f"""
-🎉 *SELAMAT DATANG DI BOT BOKEP LOKAL!*
-
-👋 *Halo {user.first_name or 'User'}!*
-
-🤖 *Bot ini belum memiliki admin.*
-📝 *Untuk mengaktifkan fitur admin, kirim command:*
-
-⚙️ `/settings`
-
-*Anda akan otomatis dijadikan admin pertama!*
-
-💡 *Fitur Admin:*
-• 📢 Broadcast pesan
-• 📊 Lihat statistik
-• 👥 Kelola pengguna
-• ⚙️ Pengaturan lengkap
-            """
-            await update.message.reply_text(setup_text, parse_mode=ParseMode.MARKDOWN)
-            return
-    except:
-        # Database belum siap, lanjutkan normal
-        pass
+    # Daftarkan user baru jika belum ada (sudah ditangani di log_user_activity)
 
     # Kirim pesan welcome
     welcome_config = get_welcome_message()
@@ -535,14 +465,9 @@ Tanggal: {DATE}
 
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mengirim pesan broadcast ke semua user."""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        # Coba setup sebagai admin pertama
-        if setup_first_admin_if_needed(user_id):
-            await update.message.reply_text("🎉 *SELAMAT!*\n\nAnda telah diset sebagai admin utama bot!", parse_mode=ParseMode.MARKDOWN)
-        else:
-            await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
-            return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
+        return
 
     # Pesan diambil dari database, bukan argumen
     message_config = get_broadcast_message()
@@ -589,14 +514,9 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menampilkan statistik bot."""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        # Coba setup sebagai admin pertama
-        if setup_first_admin_if_needed(user_id):
-            await update.message.reply_text("🎉 *SELAMAT!*\n\nAnda telah diset sebagai admin utama bot!", parse_mode=ParseMode.MARKDOWN)
-        else:
-            await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
-            return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
+        return
 
     try:
         # Hitung uptime dengan aman
@@ -803,14 +723,9 @@ async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def listusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menampilkan jumlah user yang terdaftar dan opsi export CSV (Admin only)."""
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        # Coba setup sebagai admin pertama
-        if setup_first_admin_if_needed(user_id):
-            await update.message.reply_text("🎉 *SELAMAT!*\n\nAnda telah diset sebagai admin utama bot!", parse_mode=ParseMode.MARKDOWN)
-        else:
-            await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
-            return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
+        return
 
     users = db.get_users()
 
@@ -934,16 +849,9 @@ async def handle_forward_message(update: Update, context: ContextTypes.DEFAULT_T
 
 async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menampilkan menu settings interaktif."""
-    user_id = update.effective_user.id
-
-    # Cek apakah user adalah admin atau setup sebagai admin pertama
-    if not is_admin(user_id):
-        # Coba setup sebagai admin pertama jika belum ada admin
-        if setup_first_admin_if_needed(user_id):
-            await update.message.reply_text("🎉 *SELAMAT!*\n\nAnda telah diset sebagai admin utama bot!\n\nSekarang Anda bisa mengakses menu settings.", parse_mode=ParseMode.MARKDOWN)
-        else:
-            await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
-            return
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
+        return
 
     # Cek apakah ada riwayat navigasi
     last_menu = get_navigation_history(update.effective_user.id)
