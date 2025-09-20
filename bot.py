@@ -19,133 +19,120 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 import random
+import csv
+from io import StringIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
+from database import get_db
 
 # --- KONFIGURASI UTAMA ---
 TOKEN = os.getenv("TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
 ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "YOUR_ADMIN_ID_HERE")
 ADMIN_IDS = [int(admin_id) for admin_id in ADMIN_IDS_STR.split(',') if admin_id]
 
-# --- NAMA FILE UNTUK MENYIMPAN DATA ---
-DB_FILE = "bot_database.json"
+# --- DATABASE MANAGER ---
+db = get_db()
 
-# --- STRUKTUR DATABASE DEFAULT ---
-DEFAULT_DB = {
-    "users": [],
-    "admins": ADMIN_IDS,
-    "welcome_message": {
-        "text": "SELAMAT DATANG DI SITUS\nPAIZA99 SITUS ONLINE\nTERPERCAYA NO 1 DI INDONESIA\n\nCARI DI GOGLE \"PAIZA99\"\n\n❏ SITUS DENGAN BONUS TANPA BATAS\n❏ AUTO TURUN SCATTER\n❏ SCATER HITAM\n❏ PERKALIAN 1000\n\nLINK DAFTAR\nhttps://tautin.app/L2wKBu0Pdi\nhttps://tautin.app/L2wKBu0Pdi\nhttps://tautin.app/L2wKBu0Pdi\n\n🏴 JIKA BOT EROR LAPORAN KE\n@sssalwaww\n\n═══════════════════\n●Nama : {NAME}\n●Username : {USERNAME}\n●ID : {ID}\n●Tanggal : {DATE}\n═══════════════════",
-        "buttons": [
-            {"text": "Join Sini Kak", "url": "https://t.me/c/3004478026"},
-            {"text": "Join Sini Kak", "url": "https://t.me/c/3004478026"}
-        ],
-        "photo": None
-    },
-    "broadcast_message": {
-        "text": "Ini adalah pesan broadcast. Atur pesan ini di menu settings.",
-        "photo": None,
-        "buttons": []
-    },
-    "auto_broadcast": {
-        "enabled": False,
-        "message": {
-            "text": "Ini adalah pesan auto broadcast. Atur pesan ini di menu settings.",
-            "photo": None,
-            "buttons": []
-        },
-        "interval_minutes": 60,
-        "last_sent": None
-    },
-    "bot_info": {
-        "start_time": datetime.now().isoformat()
-    },
-    "custom_commands": {},
-    "anti_spam": {
-        "enabled": False,
-        "max_messages_per_minute": 5,
-        "warning_message": "⚠️ Terdeteksi spam! Harap kurangi frekuensi pengiriman pesan.",
-        "mute_duration_minutes": 10,
-        "banned_words": []
-    },
-    "user_logs": [],
-    "navigation_history": {},
-    "group_welcome": {
-        "enabled": False,
-        "text": "Selamat datang di group! Silakan baca rules group.",
-        "photo": None,
-        "buttons": []
-    },
-    "scheduled_messages": []
+# --- DEFAULT SETTINGS ---
+DEFAULT_WELCOME_MESSAGE = {
+    "text": "SELAMAT DATANG DI SITUS\nPAIZA99 SITUS ONLINE\nTERPERCAYA NO 1 DI INDONESIA\n\nCARI DI GOGLE \"PAIZA99\"\n\n❏ SITUS DENGAN BONUS TANPA BATAS\n❏ AUTO TURUN SCATTER\n❏ SCATER HITAM\n❏ PERKALIAN 1000\n\nLINK DAFTAR\nhttps://tautin.app/L2wKBu0Pdi\nhttps://tautin.app/L2wKBu0Pdi\nhttps://tautin.app/L2wKBu0Pdi\n\n🏴 JIKA BOT EROR LAPORAN KE\n@sssalwaww\n\n═══════════════════\n●Nama : {NAME}\n●Username : {USERNAME}\n●ID : {ID}\n●Tanggal : {DATE}\n═══════════════════",
+    "buttons": [
+        {"text": "Join Sini Kak", "url": "https://t.me/c/3004478026"},
+        {"text": "Join Sini Kak", "url": "https://t.me/c/3004478026"}
+    ],
+    "photo": None
 }
 
-# --- FUNGSI DATABASE (LOAD & SAVE) ---
-def load_db():
-    """Memuat database dari file JSON dengan cache untuk performance."""
-    global DB_CACHE, CACHE_TIME
+DEFAULT_BROADCAST_MESSAGE = {
+    "text": "Ini adalah pesan broadcast. Atur pesan ini di menu settings.",
+    "photo": None,
+    "buttons": []
+}
 
-    import time
-    current_time = time.time()
+DEFAULT_AUTO_BROADCAST = {
+    "enabled": False,
+    "message": {
+        "text": "Ini adalah pesan auto broadcast. Atur pesan ini di menu settings.",
+        "photo": None,
+        "buttons": []
+    },
+    "interval_minutes": 60,
+    "last_sent": None
+}
 
-    # Gunakan cache jika belum expired (30 detik untuk operasi normal)
-    if DB_CACHE is not None and current_time - CACHE_TIME < 30:
-        return DB_CACHE.copy()
+DEFAULT_ANTI_SPAM = {
+    "enabled": False,
+    "max_messages_per_minute": 5,
+    "warning_message": "⚠️ Terdeteksi spam! Harap kurangi frekuensi pengiriman pesan.",
+    "mute_duration_minutes": 10,
+    "banned_words": []
+}
 
-    # Load dari file
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, 'r', encoding='utf-8') as f:
-                DB_CACHE = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            DB_CACHE = DEFAULT_DB.copy()
-    else:
-        DB_CACHE = DEFAULT_DB.copy()
+DEFAULT_GROUP_WELCOME = {
+    "enabled": False,
+    "text": "Selamat datang di group! Silakan baca rules group.",
+    "photo": None,
+    "buttons": []
+}
 
-    CACHE_TIME = current_time
-    return DB_CACHE.copy()
+# --- HELPER FUNCTIONS FOR DATABASE ---
+def get_welcome_message():
+    """Get welcome message from database"""
+    message = db.get_setting("welcome_message")
+    return message if message else DEFAULT_WELCOME_MESSAGE
 
-def save_db(db):
-    """Menyimpan database ke file JSON dan clear cache."""
-    global DB_CACHE, CACHE_TIME, ADMIN_CACHE
+def get_broadcast_message():
+    """Get broadcast message from database"""
+    message = db.get_setting("broadcast_message")
+    return message if message else DEFAULT_BROADCAST_MESSAGE
 
-    # Simpan ke file
-    with open(DB_FILE, 'w', encoding='utf-8') as f:
-        json.dump(db, f, indent=4, ensure_ascii=False)
+def get_auto_broadcast():
+    """Get auto broadcast settings from database"""
+    settings = db.get_setting("auto_broadcast")
+    return settings if settings else DEFAULT_AUTO_BROADCAST
 
-    # Update cache
-    DB_CACHE = db.copy()
-    ADMIN_CACHE = set(db.get("admins", []))
-    CACHE_TIME = time.time()
+def get_custom_commands():
+    """Get custom commands from database"""
+    commands = db.get_setting("custom_commands")
+    return commands if commands else {}
 
-# --- CACHE UNTUK PERFORMANCE ---
-ADMIN_CACHE = {}
-DB_CACHE = None
-CACHE_TIME = 0
+def get_anti_spam():
+    """Get anti-spam settings from database"""
+    settings = db.get_setting("anti_spam")
+    return settings if settings else DEFAULT_ANTI_SPAM
+
+def get_group_welcome():
+    """Get group welcome settings from database"""
+    settings = db.get_setting("group_welcome")
+    return settings if settings else DEFAULT_GROUP_WELCOME
+
+def get_navigation_history(user_id):
+    """Get navigation history for user"""
+    history = db.get_setting(f"nav_history_{user_id}")
+    return history if history else "main_menu"
+
+def set_navigation_history(user_id, menu_path):
+    """Set navigation history for user"""
+    db.set_setting(f"nav_history_{user_id}", menu_path)
+
+def get_bot_info():
+    """Get bot info"""
+    info = db.get_setting("bot_info")
+    if not info:
+        info = {"start_time": datetime.now().isoformat()}
+        db.set_setting("bot_info", info)
+    return info
 
 # --- FUNGSI HELPER ---
 def is_admin(user_id: int) -> bool:
-    """Mengecek apakah user adalah admin dengan cache."""
-    global ADMIN_CACHE, CACHE_TIME
-
-    # Cek cache jika belum expired (5 menit)
-    import time
-    current_time = time.time()
-    if current_time - CACHE_TIME > 300:  # 5 menit
-        db = load_db()
-        ADMIN_CACHE = set(db.get("admins", []))
-        CACHE_TIME = current_time
-
-    return user_id in ADMIN_CACHE
+    """Mengecek apakah user adalah admin."""
+    return db.is_admin(user_id)
 
 def is_main_admin(user_id: int) -> bool:
     """Mengecek apakah user adalah admin utama."""
     return user_id in ADMIN_IDS
-
-def is_main_admin(user_id: int) -> bool:
-    """Mengecek apakah user adalah admin utama."""
-    return user_id == ADMIN_IDS[0]  # Admin utama adalah yang pertama dalam list
 
 def replace_placeholders(text: str, user) -> str:
     """Mengganti placeholder dalam teks dengan data user."""
@@ -176,61 +163,30 @@ def log_user_activity(user, action: str, details: str = ""):
     """Mencatat aktivitas user ke dalam log."""
     from datetime import datetime
 
-    db = load_db()
-    if "user_logs" not in db:
-        db["user_logs"] = []
+    # Add user to database if not exists
+    db.add_user(
+        user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=getattr(user, 'last_name', None)
+    )
 
-    # Cek dan simpan perubahan username
-    if user.username:
-        if "username_history" not in db:
-            db["username_history"] = {}
-
-        user_key = str(user.id)
-        if user_key not in db["username_history"]:
-            db["username_history"][user_key] = []
-
-        # Cek apakah username berubah
-        existing_usernames = [entry['username'] for entry in db["username_history"][user_key]]
-        if user.username not in existing_usernames:
-            db["username_history"][user_key].append({
-                "username": user.username,
-                "timestamp": datetime.now().isoformat(),
-                "action": action
-            })
-
-            # Simpan maksimal 10 history per user
-            if len(db["username_history"][user_key]) > 10:
-                db["username_history"][user_key] = db["username_history"][user_key][-10:]
-
-    log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "user_id": user.id,
-        "username": user.username,
-        "first_name": user.first_name,
-        "action": action,
-        "details": details
-    }
-
-    # Simpan maksimal 1000 log terakhir
-    db["user_logs"].append(log_entry)
-    if len(db["user_logs"]) > 1000:
-        db["user_logs"] = db["user_logs"][-1000:]
-
-    save_db(db)
+    # Log the activity
+    db.add_log(
+        user_id=user.id,
+        username=user.username or "",
+        first_name=user.first_name or "",
+        action=action,
+        details=details
+    )
 
 def update_navigation_history(user_id: int, menu_path: str):
     """Update riwayat navigasi user untuk breadcrumb."""
-    db = load_db()
-    if "navigation_history" not in db:
-        db["navigation_history"] = {}
-
-    db["navigation_history"][str(user_id)] = menu_path
-    save_db(db)
+    set_navigation_history(user_id, menu_path)
 
 def get_navigation_history(user_id: int) -> str:
     """Mendapatkan menu terakhir yang diakses user."""
-    db = load_db()
-    return db.get("navigation_history", {}).get(str(user_id), "main_menu")
+    return get_navigation_history(user_id)
 
 async def quick_broadcast_task(context, message_config, users, admin_id):
     """Task untuk quick broadcast."""
@@ -369,14 +325,13 @@ async def send_complex_message(context: ContextTypes.DEFAULT_TYPE, user_id: int,
 async def auto_broadcast_task(context: ContextTypes.DEFAULT_TYPE):
     """Tugas yang berjalan di background untuk auto broadcast."""
     try:
-        db = load_db()
-        autobc_config = db.get("auto_broadcast", {})
+        autobc_config = get_auto_broadcast()
         if not autobc_config.get("enabled"):
             print("Auto broadcast dinonaktifkan, melewati tugas.")
             return
 
         message_config = autobc_config.get("message", {})
-        users = db.get("users", [])
+        users = db.get_users()
         if not users:
             print("Tidak ada user terdaftar untuk auto broadcast.")
             return
@@ -418,8 +373,10 @@ async def auto_broadcast_task(context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(1) # Jeda aman 1 detik per pesan
 
         print(f"Auto Broadcast Selesai: {sent_count} terkirim, {failed_count} gagal.")
-        db["auto_broadcast"]["last_sent"] = datetime.now().isoformat()
-        save_db(db)
+
+        # Update last sent time
+        autobc_config["last_sent"] = datetime.now().isoformat()
+        db.set_setting("auto_broadcast", autobc_config)
 
     except Exception as e:
         print(f"Error dalam auto_broadcast_task: {e}")
@@ -429,19 +386,14 @@ async def auto_broadcast_task(context: ContextTypes.DEFAULT_TYPE):
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menangani command /start."""
     user = update.effective_user
-    db = load_db()
 
     # Log aktivitas user
     log_user_activity(user, "start_command", "User menggunakan /start")
 
-    # Daftarkan user baru jika belum ada
-    if user.id not in db["users"]:
-        db["users"].append(user.id)
-        save_db(db)
-        log_user_activity(user, "new_user", "User baru terdaftar")
+    # Daftarkan user baru jika belum ada (sudah ditangani di log_user_activity)
 
     # Kirim pesan welcome
-    welcome_config = db.get("welcome_message", {})
+    welcome_config = get_welcome_message()
     text = welcome_config.get("text", "Selamat datang!")
     buttons = welcome_config.get("buttons", [])
     photo = welcome_config.get("photo")
@@ -518,14 +470,13 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Pesan diambil dari database, bukan argumen
-    db = load_db()
-    message_config = db.get("broadcast_message", {})
-    users = db.get("users", [])
+    message_config = get_broadcast_message()
+    users = db.get_users()
 
     if not users:
         await update.message.reply_text("Belum ada user yang terdaftar.")
         return
-    
+
     if not (message_config.get("text") or message_config.get("photo")):
         await update.message.reply_text("Pesan broadcast belum diatur. Silakan atur melalui menu /settings.")
         return
@@ -568,12 +519,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
-        db = load_db()
-
         # Hitung uptime dengan aman
         uptime_str = "N/A"
         try:
-            start_time_str = db.get("bot_info", {}).get("start_time")
+            bot_info = get_bot_info()
+            start_time_str = bot_info.get("start_time")
             if start_time_str:
                 start_time = datetime.fromisoformat(start_time_str)
                 uptime = datetime.now() - start_time
@@ -594,11 +544,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             uptime_str = "Error"
 
         # Hitung statistik lainnya
-        users = db.get('users', [])
-        admins = db.get('admins', [])
-        user_logs = db.get('user_logs', [])
-        custom_commands = db.get('custom_commands', {})
-        scheduled_messages = db.get('scheduled_messages', [])
+        users = db.get_users()
+        admins = db.get_admins()
+        user_logs = db.get_logs()
+        custom_commands = get_custom_commands()
+        scheduled_messages = db.get_scheduled_messages()
 
         # Hitung aktivitas hari ini
         today = datetime.now().date()
@@ -617,6 +567,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Hitung user aktif (yang berinteraksi dalam 7 hari terakhir)
         active_users = len(set(log.get('user_id') for log in week_logs))
 
+        # Get auto broadcast settings
+        auto_broadcast = get_auto_broadcast()
+
         stats_text = f"""
 📊 **STATISTIK BOT LENGKAP**
 
@@ -627,9 +580,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Pengguna Baru Hari Ini: `{len(set(log.get('user_id') for log in today_logs))}`
 
 ⚙️ *FITUR BOT*
-• Auto Broadcast: `{'🟢 Aktif' if db.get('auto_broadcast', {}).get('enabled') else '🔴 Mati'}`
-• Anti-Spam: `{'🟢 Aktif' if db.get('anti_spam', {}).get('enabled') else '🔴 Mati'}`
-• Sambutan Grup: `{'🟢 Aktif' if db.get('group_welcome', {}).get('enabled') else '🔴 Mati'}`
+• Auto Broadcast: `{'🟢 Aktif' if auto_broadcast.get('enabled') else '🔴 Mati'}`
+• Anti-Spam: `{'🟢 Aktif' if get_anti_spam().get('enabled') else '🔴 Mati'}`
+• Sambutan Grup: `{'🟢 Aktif' if get_group_welcome().get('enabled') else '🔴 Mati'}`
 
 📝 *MANAJEMEN KONTEN*
 • Perintah Kustom: `{len(custom_commands)}`
@@ -640,12 +593,12 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • Waktu Aktif: `{uptime_str}`
 • Aktivitas Hari Ini: `{len(today_logs)}`
 • Aktivitas Minggu Ini: `{len(week_logs)}`
-• Auto Broadcast Terakhir: `{db.get('auto_broadcast', {}).get('last_sent', 'Belum pernah')[:19] if db.get('auto_broadcast', {}).get('last_sent') else 'Belum pernah'}`
+• Auto Broadcast Terakhir: `{auto_broadcast.get('last_sent', 'Belum pernah')[:19] if auto_broadcast.get('last_sent') else 'Belum pernah'}`
 
 💾 *INFO PENYIMPANAN*
-• Ukuran Database: `~{os.path.getsize(DB_FILE) / 1024:.2f} KB`
-• Ukuran Log Pengguna: `{len(user_logs)} entri`
-• Cadangan Tersedia: `{'Ya' if any(f.startswith('backup_') for f in os.listdir('.')) else 'Tidak'}`
+• Database: PostgreSQL ✅
+• Total Log Pengguna: `{len(user_logs)} entri`
+• Cadangan Tersedia: `Ya (PostgreSQL)`
         """
 
         await update.message.reply_text(stats_text.strip(), parse_mode=ParseMode.MARKDOWN)
@@ -769,20 +722,32 @@ async def time_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(time_text.strip(), parse_mode=ParseMode.MARKDOWN)
 
 async def listusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menampilkan daftar semua user yang terdaftar (Admin only)."""
+    """Menampilkan jumlah user yang terdaftar dan opsi export CSV (Admin only)."""
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("❌ Anda tidak punya izin untuk command ini.")
         return
 
-    db = load_db()
-    users = db.get("users", [])
+    users = db.get_users()
 
     if not users:
         await update.message.reply_text("Belum ada user yang terdaftar.")
         return
 
-    user_list = "\n".join([f"- `{user_id}`" for user_id in users])
-    await update.message.reply_text(f"👥 *DAFTAR USER TERDAFTAR*\n\n{user_list}\n\nTotal: {len(users)} user", parse_mode=ParseMode.MARKDOWN)
+    # Keyboard untuk opsi export
+    keyboard = [
+        [InlineKeyboardButton("📊 Export ke CSV", callback_data="export_users_csv")],
+        [InlineKeyboardButton("📋 Lihat Detail", callback_data="view_users_detail")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        f"👥 *STATISTIK PENGGUNA*\n\n"
+        f"• Total Pengguna: `{len(users)}`\n"
+        f"• Pengguna Aktif: `{len([u for u in users if u.get('is_active', True)])}`\n\n"
+        f"Pilih opsi di bawah untuk melihat detail atau export data:",
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.MARKDOWN
+    )
 
 async def sangmata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fitur Sang Mata - Cari user by username untuk semua user."""
@@ -890,7 +855,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # Cek apakah ada riwayat navigasi
-    last_menu = get_navigation_history(update.effective_user.id) if update.effective_user else "main_menu"
+    last_menu = get_navigation_history(update.effective_user.id)
 
     keyboard = [
         [InlineKeyboardButton("📝 Welcome Msg", callback_data="menu_welcome")],
@@ -967,7 +932,6 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(0.5)  # Tunggu sebelum retry
 
     callback_data = query.data
-    db = load_db()
     
     # Navigasi Utama
     if callback_data == "main_menu":
@@ -1000,11 +964,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
 
     # Penanganan untuk menu Welcome, Broadcast, AutoBroadcast Message
-    for key, (title, config) in menus.items():
+    for key, (title, config_func) in menus.items():
         if callback_data == f"menu_{key}":
-            # Pastikan config adalah dict
-            if isinstance(config, str) or config is None:
-                config = {}
+            # Get config from database
+            if key == "welcome":
+                config = get_welcome_message()
+            elif key == "broadcast":
+                config = get_broadcast_message()
+            elif key == "autobroadcast_msg":
+                config = get_auto_broadcast().get("message", {})
+
             photo_status = "✅ Ada" if config.get("photo") else "❌ Kosong"
             button_count = len(config.get("buttons", []))
             text = f"*{title}*\n\n- *Foto*: {photo_status}\n- *Tombol*: {button_count}\n\nPilih aksi:"
@@ -1659,6 +1628,79 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Note: Actual restart would require external script or supervisor
         return
 
+    # Export users to CSV
+    elif callback_data == "export_users_csv":
+        try:
+            users = db.get_users()
+            admins = db.get_admins()
+
+            # Buat CSV content
+            csv_output = StringIO()
+            writer = csv.writer(csv_output)
+            writer.writerow(['No', 'User ID', 'Username', 'First Name', 'Last Name', 'Joined At', 'Last Active', 'Type'])
+
+            for i, user in enumerate(users, 1):
+                user_type = "Admin" if user['user_id'] in admins else "User"
+                writer.writerow([
+                    i,
+                    user['user_id'],
+                    user.get('username', ''),
+                    user.get('first_name', ''),
+                    user.get('last_name', ''),
+                    user.get('joined_at', ''),
+                    user.get('last_active', ''),
+                    user_type
+                ])
+
+            csv_content = csv_output.getvalue()
+            csv_output.close()
+
+            # Kirim file CSV
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"users_export_{timestamp}.csv"
+
+            await context.bot.send_document(
+                chat_id=query.from_user.id,
+                document=csv_content.encode('utf-8'),
+                filename=filename,
+                caption="📊 *EXPORT DATA PENGGUNA*\n\nFile CSV berisi daftar semua pengguna telah dikirim."
+            )
+
+            await query.edit_message_text("✅ Export CSV berhasil! File telah dikirim ke chat pribadi Anda.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
+
+        except Exception as e:
+            await query.edit_message_text(f"❌ Gagal export CSV: {str(e)}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_menu")]]))
+
+        return
+
+    # View users detail
+    elif callback_data == "view_users_detail":
+        users = db.get_users()
+        admins = db.get_admins()
+
+        if not users:
+            await query.edit_message_text("Belum ada user yang terdaftar.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_menu")]]))
+            return
+
+        # Tampilkan 20 user terakhir saja untuk menghindari pesan terlalu panjang
+        recent_users = users[-20:]
+        user_list = ""
+
+        for i, user in enumerate(reversed(recent_users), 1):
+            user_type = "👑" if user['user_id'] in admins else "👤"
+            username = f"@{user.get('username', 'N/A')}" if user.get('username') else "N/A"
+            first_name = user.get('first_name', 'N/A')
+            joined_date = user.get('joined_at', '')[:10] if user.get('joined_at') else 'N/A'
+
+            user_list += f"{i}. {user_type} {first_name} ({username}) - {joined_date}\n"
+
+        await query.edit_message_text(
+            f"👥 *DAFTAR PENGGUNA TERAKHIR*\n\n{user_list}\nTotal: {len(users)} pengguna",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_menu")]]),
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return
+
     elif callback_data == "show_guide":
         guide_text = """
 📚 *GUIDE PLACEHOLDER PESAN*
@@ -2235,10 +2277,10 @@ async def set_bot_commands(application: Application):
 def main():
     """Fungsi utama untuk menjalankan bot."""
     print("Memulai bot...")
-    
-    # Buat database jika belum ada
-    if not os.path.exists(DB_FILE):
-        save_db(DEFAULT_DB)
+
+    # Inisialisasi database
+    print("Menginisialisasi database PostgreSQL...")
+    # Database sudah diinisialisasi di module level
 
     # Inisialisasi Application
     application = Application.builder().token(TOKEN).build()

@@ -35,11 +35,11 @@ class DatabaseManager:
     def _init_postgresql(self):
         """Initialize PostgreSQL connection"""
         try:
-            # Get database URL from environment
-            database_url = os.getenv('DATABASE_URL')
+            # Get database URL from environment (use provided URL if available)
+            database_url = os.getenv('DATABASE_URL', 'postgres://ubrbg1abcr6305:p26111a2abf61143377ca27214204dceb1a64495b35d1faf13f56e75479a25759@c7itisjfjj8ril.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com:5432/dch0m1dl2r3et8')
 
             if database_url:
-                # Parse Supabase URL
+                # Parse database URL
                 parsed = urlparse(database_url)
                 self.pg_conn = psycopg2.connect(
                     host=parsed.hostname,
