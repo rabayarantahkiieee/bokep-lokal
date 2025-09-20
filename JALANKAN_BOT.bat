@@ -1,8 +1,8 @@
 @echo off
-title BOT BOKEP LOKAL
+title BOT INFO FREEBET GACOR
 
 echo ===========================================
-echo  BOT BOKEP LOKAL - V3 (Multifungsi)
+echo  BOT INFO FREEBET GACOR - V3 (Multifungsi)
 echo ===========================================
 echo.
 echo Sedang menginstall library yang dibutuhkan...
