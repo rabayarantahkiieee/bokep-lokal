@@ -37,7 +37,7 @@ db = get_db()
 
 # --- DEFAULT SETTINGS ---
 DEFAULT_WELCOME_MESSAGE = {
-    "text": "SELAMAT DATANG DI SITUS\nPAIZA99 SITUS ONLINE\nTERPERCAYA NO 1 DI INDONESIA\n\nCARI DI GOGLE \"PAIZA99\"\n\n❏ SITUS DENGAN BONUS TANPA BATAS\n❏ AUTO TURUN SCATTER\n❏ SCATER HITAM\n❏ PERKALIAN 1000\n\nLINK DAFTAR\nhttps://tautin.app/L2wKBu0Pdi\nhttps://tautin.app/L2wKBu0Pdi\nhttps://tautin.app/L2wKBu0Pdi\n\n🏴 JIKA BOT EROR LAPORAN KE\n@sssalwaww\n\n═══════════════════\n●Nama : {NAME}\n●Username : {USERNAME}\n●ID : {ID}\n●Tanggal : {DATE}\n═══════════════════",
+    "text": "𝑺𝒆𝒍𝒂𝒎𝒂𝒕 𝑫𝒂𝒕𝒂𝒏𝒈 𝑫𝒊 𝑩𝑶𝑻 𝑩𝒐𝒌𝒆𝒑 𝑳𝒐𝒌𝒂𝒍 𝑮𝒓𝒂𝒕𝒊𝒔\n╼═════════════════╾\n●Nama : {NAME}\n●Username : {USERNAME}\n●ID : {ID}\n●Tanggal : {DATE}\n╼═════════════════╾\n𝑹𝒖𝒍𝒆𝒔 𝑷𝒓𝒐𝒎𝒐 :\n❏ Silahkan Share Bot Ini\n❏ Klik Tombol Join Dibawah",
     "buttons": [
         {"text": "Join Sini Kak", "url": "https://t.me/c/3004478026"},
         {"text": "Join Sini Kak", "url": "https://t.me/c/3004478026"}
@@ -375,8 +375,8 @@ async def auto_broadcast_task(context: ContextTypes.DEFAULT_TYPE):
         print(f"Auto Broadcast Selesai: {sent_count} terkirim, {failed_count} gagal.")
 
         # Update last sent time
-        autobc_config["last_sent"] = datetime.now().isoformat()
-        db.set_setting("auto_broadcast", autobc_config)
+        autobc["last_sent"] = datetime.now().isoformat()
+        db.set_setting("auto_broadcast", autobc)
 
     except Exception as e:
         print(f"Error dalam auto_broadcast_task: {e}")
@@ -786,8 +786,7 @@ async def handle_forward_message(update: Update, context: ContextTypes.DEFAULT_T
         first_name = forward_from.first_name
 
         # Cari di database logs
-        db = load_db()
-        user_logs = db.get("user_logs", [])
+        user_logs = db.get_logs()
 
         # Cari semua aktivitas user ini
         user_activities = [
@@ -796,7 +795,7 @@ async def handle_forward_message(update: Update, context: ContextTypes.DEFAULT_T
         ]
 
         # Cari history username changes dari database
-        username_history = db.get("username_history", {}).get(str(user_id), [])
+        username_history = []  # Note: Username history tidak diimplementasi di PostgreSQL
 
         # Buat response
         response = f"👁️ *SANG MATA - DETEKSI USER*\n\n"
@@ -958,9 +957,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- Sub-menu Dinamis ---
     menus = {
-        "welcome": ("📝 Welcome Message", db.get("welcome_message", {})),
-        "broadcast": ("📢 Manual Broadcast", db.get("broadcast_message", {})),
-        "autobroadcast_msg": ("🤖 Auto Broadcast Message", db.get("auto_broadcast", {}).get("message", {}))
+        "welcome": ("📝 Welcome Message", get_welcome_message()),
+        "broadcast": ("📢 Manual Broadcast", get_broadcast_message()),
+        "autobroadcast_msg": ("🤖 Auto Broadcast Message", get_auto_broadcast().get("message", {}))
     }
 
     # Penanganan untuk menu Welcome, Broadcast, AutoBroadcast Message
@@ -1011,17 +1010,19 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif callback_data == f"clear_buttons_{key}":
             if key == "autobroadcast_msg":
-                if "auto_broadcast" not in db:
-                    db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
-                if "message" not in db["auto_broadcast"]:
-                    db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
-                db["auto_broadcast"]["message"]["buttons"] = []
-            else:
-                message_key = f"{key}_message"
-                if message_key not in db:
-                    db[message_key] = DEFAULT_DB.get(message_key, {"text": "", "photo": None, "buttons": []})
-                db[message_key]["buttons"] = []
-            save_db(db)
+                autobc = get_auto_broadcast()
+                if "message" not in autobc:
+                    autobc["message"] = DEFAULT_AUTO_BROADCAST["message"]
+                autobc["message"]["buttons"] = []
+                db.set_setting("auto_broadcast", autobc)
+            elif key == "welcome":
+                welcome_msg = get_welcome_message()
+                welcome_msg["buttons"] = []
+                db.set_setting("welcome_message", welcome_msg)
+            elif key == "broadcast":
+                broadcast_msg = get_broadcast_message()
+                broadcast_msg["buttons"] = []
+                db.set_setting("broadcast_message", broadcast_msg)
             await query.edit_message_text("✅ Semua tombol telah dihapus!", reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("⬅️ Kembali", callback_data=f"menu_{key}")],
                 [InlineKeyboardButton("➕ Tambah Tombol Baru", callback_data=f"add_button_{key}")],
@@ -1030,10 +1031,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         elif callback_data == f"preview_{key}":
             # Preview pesan
-            if key == "autobroadcast_msg":
-                message_config = db["auto_broadcast"]["message"]
-            else:
-                message_config = db[f"{key}_message"]
+            if key == "welcome":
+                message_config = get_welcome_message()
+            elif key == "broadcast":
+                message_config = get_broadcast_message()
+            elif key == "autobroadcast_msg":
+                message_config = get_auto_broadcast().get("message", {})
 
             text = message_config.get("text", "")
             photo = message_config.get("photo")
@@ -1088,7 +1091,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Menu Auto Broadcast (Settings)
     if callback_data == "menu_autobroadcast":
-        autobc_config = db.get("auto_broadcast", {})
+        autobc_config = get_auto_broadcast()
         status = "🟢 AKTIF" if autobc_config.get("enabled") else "🔴 MATI"
         interval = autobc_config.get("interval_minutes", 60)
 
@@ -1103,11 +1106,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     elif callback_data == "autobc_toggle":
-        if "auto_broadcast" not in db:
-            db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
-        current_status = db["auto_broadcast"].get("enabled", False)
-        db["auto_broadcast"]["enabled"] = not current_status
-        save_db(db)
+        autobc = get_auto_broadcast()
+        current_status = autobc.get("enabled", False)
+        autobc["enabled"] = not current_status
+        db.set_setting("auto_broadcast", autobc)
 
         # Restart job queue jika diaktifkan
         if not current_status and hasattr(context, 'application') and context.application.job_queue:
@@ -1118,7 +1120,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     job.schedule_removal()
 
             # Tambahkan job baru
-            interval = db["auto_broadcast"].get("interval_minutes", 60)
+            interval = autobc.get("interval_minutes", 60)
             context.application.job_queue.run_repeating(auto_broadcast_task, interval=interval * 60, first=10, name="auto_broadcast")
             print(f"Auto broadcast diaktifkan dengan interval {interval} menit")
 
@@ -1136,7 +1138,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("❌ Hanya admin utama yang bisa mengelola admin.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="main_menu")]]))
             return
 
-        admins = db.get("admins", [])
+        admins = db.get_admins()
         admin_list = "\n".join([f"- `{admin_id}`" for admin_id in admins])
         keyboard = [
             [InlineKeyboardButton("Tambah Admin", callback_data="admin_add")],
@@ -1190,18 +1192,32 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif callback_data == "backup_db":
         try:
             import json
-            from datetime import datetime, timedelta
+            from datetime import datetime
 
-            db = load_db()
+            # Get all settings for backup
+            backup_data = {
+                "welcome_message": get_welcome_message(),
+                "broadcast_message": get_broadcast_message(),
+                "auto_broadcast": get_auto_broadcast(),
+                "custom_commands": get_custom_commands(),
+                "anti_spam": get_anti_spam(),
+                "group_welcome": get_group_welcome(),
+                "bot_info": get_bot_info(),
+                "users": db.get_users(),
+                "admins": db.get_admins(),
+                "user_logs": db.get_logs(),
+                "scheduled_messages": db.get_scheduled_messages()
+            }
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_filename = f"backup_{timestamp}.json"
 
             with open(backup_filename, 'w', encoding='utf-8') as f:
-                json.dump(db, f, indent=4, ensure_ascii=False)
+                json.dump(backup_data, f, indent=4, ensure_ascii=False, default=str)
 
             # Kirim file backup ke admin
             with open(backup_filename, 'rb') as f:
-                await context.bot.send_document(chat_id=query.from_user.id, document=f, filename=backup_filename, caption="✅ *BACKUP BERHASIL*\n\nFile backup database telah dibuat dan dikirim.")
+                await context.bot.send_document(chat_id=query.from_user.id, document=f, filename=backup_filename, caption="✅ *BACKUP BERHASIL*\n\nFile backup database PostgreSQL telah dibuat dan dikirim.")
 
             # Hapus file lokal setelah dikirim
             import os
@@ -1214,7 +1230,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data == "restore_db":
         context.user_data['state'] = "awaiting_restore_file"
-        await query.edit_message_text("📁 *RESTORE DATABASE*\n\nSilakan kirim file backup (.json) yang ingin direstore.\n\n⚠️ *PERINGATAN:* Data saat ini akan digantikan!", parse_mode=ParseMode.MARKDOWN)
+        await query.edit_message_text("📁 *RESTORE DATABASE*\n\nSilakan kirim file backup (.json) yang ingin direstore.\n\n⚠️ *PERINGATAN:* Data saat ini akan digantikan dengan data dari backup!", parse_mode=ParseMode.MARKDOWN)
         return
 
     elif callback_data == "export_csv":
@@ -1222,18 +1238,17 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             import csv
             from io import StringIO
 
-            db = load_db()
-            users = db.get("users", [])
-            admins = db.get("admins", [])
+            users = db.get_users()
+            admins = db.get_admins()
 
             # Buat CSV untuk users
             csv_output = StringIO()
             writer = csv.writer(csv_output)
             writer.writerow(['User ID', 'Type'])
 
-            for user_id in users:
-                user_type = "Admin" if user_id in admins else "User"
-                writer.writerow([user_id, user_type])
+            for user in users:
+                user_type = "Admin" if user['user_id'] in admins else "User"
+                writer.writerow([user['user_id'], user_type])
 
             csv_content = csv_output.getvalue()
             csv_output.close()
@@ -1257,7 +1272,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Menu Custom Commands
     elif callback_data == "menu_custom":
-        custom_cmds = db.get("custom_commands", {})
+        custom_cmds = get_custom_commands()
         cmd_list = "\n".join([f"• `/{cmd}`" for cmd in custom_cmds.keys()]) if custom_cmds else "Belum ada custom command"
 
         keyboard = [
@@ -1276,7 +1291,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "custom_del":
-        custom_cmds = db.get("custom_commands", {})
+        custom_cmds = get_custom_commands()
         if not custom_cmds:
             await query.edit_message_text("❌ Tidak ada custom command yang bisa dihapus.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_custom")]]))
             return
@@ -1290,7 +1305,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "custom_list":
-        custom_cmds = db.get("custom_commands", {})
+        custom_cmds = get_custom_commands()
         if not custom_cmds:
             await query.edit_message_text("📋 *LIST CUSTOM COMMANDS*\n\nBelum ada custom command yang dibuat.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_custom")]]))
             return
@@ -1304,9 +1319,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data.startswith("del_custom_"):
         cmd_to_delete = callback_data.replace("del_custom_", "")
-        if "custom_commands" in db and cmd_to_delete in db["custom_commands"]:
-            del db["custom_commands"][cmd_to_delete]
-            save_db(db)
+        custom_cmds = get_custom_commands()
+        if cmd_to_delete in custom_cmds:
+            del custom_cmds[cmd_to_delete]
+            db.set_setting("custom_commands", custom_cmds)
             await query.edit_message_text(f"✅ Custom command `/{cmd_to_delete}` berhasil dihapus!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_custom")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
         else:
             await query.edit_message_text("❌ Command tidak ditemukan.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_custom")]]))
@@ -1314,7 +1330,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Menu Anti-Spam
     elif callback_data == "menu_antispam":
-        antispam_config = db.get("anti_spam", {})
+        antispam_config = get_anti_spam()
         status = "🟢 AKTIF" if antispam_config.get("enabled") else "🔴 MATI"
         max_msg = antispam_config.get("max_messages_per_minute", 5)
 
@@ -1329,11 +1345,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "antispam_toggle":
-        if "anti_spam" not in db:
-            db["anti_spam"] = DEFAULT_DB["anti_spam"]
-        current_status = db["anti_spam"].get("enabled", False)
-        db["anti_spam"]["enabled"] = not current_status
-        save_db(db)
+        antispam = get_anti_spam()
+        current_status = antispam.get("enabled", False)
+        antispam["enabled"] = not current_status
+        db.set_setting("anti_spam", antispam)
         await callback_handler(update, context)  # Refresh menu
         return
 
@@ -1343,7 +1358,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "antispam_banned_words":
-        banned_words = db.get("anti_spam", {}).get("banned_words", [])
+        banned_words = get_anti_spam().get("banned_words", [])
         words_list = "\n".join([f"• `{word}`" for word in banned_words]) if banned_words else "Belum ada kata terlarang"
 
         keyboard = [
@@ -1360,7 +1375,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "del_banned_word":
-        banned_words = db.get("anti_spam", {}).get("banned_words", [])
+        banned_words = get_anti_spam().get("banned_words", [])
         if not banned_words:
             await query.edit_message_text("❌ Tidak ada kata terlarang yang bisa dihapus.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="antispam_banned_words")]]))
             return
@@ -1375,9 +1390,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data.startswith("del_word_"):
         word_to_delete = callback_data.replace("del_word_", "")
-        if "anti_spam" in db and "banned_words" in db["anti_spam"] and word_to_delete in db["anti_spam"]["banned_words"]:
-            db["anti_spam"]["banned_words"].remove(word_to_delete)
-            save_db(db)
+        antispam = get_anti_spam()
+        if "banned_words" in antispam and word_to_delete in antispam["banned_words"]:
+            antispam["banned_words"].remove(word_to_delete)
+            db.set_setting("anti_spam", antispam)
             await query.edit_message_text(f"✅ Kata `{word_to_delete}` berhasil dihapus dari daftar terlarang!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="antispam_banned_words")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
         else:
             await query.edit_message_text("❌ Kata tidak ditemukan.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="antispam_banned_words")]]))
@@ -1385,7 +1401,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Menu Sang Mata (User Logs)
     elif callback_data == "menu_sangmata":
-        user_logs = db.get("user_logs", [])
+        user_logs = db.get_logs()
         total_logs = len(user_logs)
 
         keyboard = [
@@ -1405,7 +1421,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "view_all_logs":
-        user_logs = db.get("user_logs", [])
+        user_logs = db.get_logs()
         if not user_logs:
             await query.edit_message_text("📋 *USER LOGS*\n\nBelum ada aktivitas user yang tercatat.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_sangmata")]]), parse_mode=ParseMode.MARKDOWN)
             return
@@ -1438,9 +1454,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "confirm_clear_logs":
-        db["user_logs"] = []
-        save_db(db)
-        await query.edit_message_text("✅ Semua log aktivitas user telah dihapus!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_sangmata")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
+        # Note: Clearing all logs is not recommended for PostgreSQL
+        # Instead, we can mark them as inactive or create a new table
+        await query.edit_message_text("⚠️ *PERINGATAN*\n\nMenghapus semua log tidak direkomendasikan untuk database PostgreSQL.\n\nLog akan tetap tersimpan untuk keamanan data.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_sangmata")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
         return
 
     # Menu Fitur Canggih
@@ -1456,7 +1472,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "menu_group_welcome":
-        group_welcome = db.get("group_welcome", {})
+        group_welcome = get_group_welcome()
         status = "🟢 AKTIF" if group_welcome.get("enabled") else "🔴 MATI"
 
         keyboard = [
@@ -1470,11 +1486,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "toggle_group_welcome":
-        if "group_welcome" not in db:
-            db["group_welcome"] = DEFAULT_DB["group_welcome"]
-        current_status = db["group_welcome"].get("enabled", False)
-        db["group_welcome"]["enabled"] = not current_status
-        save_db(db)
+        group_welcome = get_group_welcome()
+        current_status = group_welcome.get("enabled", False)
+        group_welcome["enabled"] = not current_status
+        db.set_setting("group_welcome", group_welcome)
         await callback_handler(update, context)  # Refresh menu
         return
 
@@ -1489,7 +1504,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "menu_scheduled":
-        scheduled_msgs = db.get("scheduled_messages", [])
+        scheduled_msgs = db.get_scheduled_messages()
         keyboard = [
             [InlineKeyboardButton("➕ Tambah Jadwal", callback_data="add_scheduled")],
             [InlineKeyboardButton("📋 List Jadwal", callback_data="list_scheduled")],
@@ -1506,7 +1521,7 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif callback_data == "list_scheduled":
-        scheduled_msgs = db.get("scheduled_messages", [])
+        scheduled_msgs = db.get_scheduled_messages()
         if not scheduled_msgs:
             await query.edit_message_text("📋 *SCHEDULED MESSAGES*\n\nBelum ada jadwal pesan yang dibuat.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_scheduled")]]), parse_mode=ParseMode.MARKDOWN)
             return
@@ -1528,12 +1543,11 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data.startswith("del_sched_"):
         index = int(callback_data.replace("del_sched_", ""))
-        scheduled_msgs = db.get("scheduled_messages", [])
+        scheduled_msgs = db.get_scheduled_messages()
 
         if 0 <= index < len(scheduled_msgs):
-            deleted_msg = scheduled_msgs.pop(index)
-            db["scheduled_messages"] = scheduled_msgs
-            save_db(db)
+            deleted_msg = scheduled_msgs[index]
+            db.remove_scheduled_message(deleted_msg['id'])
             await query.edit_message_text(f"✅ Scheduled message berhasil dihapus!\n\n⏰ Waktu: `{deleted_msg.get('time')}`\n📝 Pesan: {deleted_msg.get('message')[:100]}{'...' if len(deleted_msg.get('message', '')) > 100 else ''}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_scheduled")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
         else:
             await query.edit_message_text("❌ Scheduled message tidak ditemukan.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_scheduled")]]))
@@ -1553,9 +1567,8 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data == "quick_broadcast":
         # Quick broadcast - gunakan pesan broadcast yang sudah ada
-        db = load_db()
-        message_config = db.get("broadcast_message", {})
-        users = db.get("users", [])
+        message_config = get_broadcast_message()
+        users = db.get_users()
 
         if not users:
             await query.edit_message_text("❌ Belum ada user terdaftar.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_quick_actions")]]))
@@ -1574,17 +1587,16 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data == "quick_online_users":
         # Quick check online users (semua user dianggap online)
-        db = load_db()
-        users = db.get("users", [])
-        admins = db.get("admins", [])
+        users = db.get_users()
+        admins = db.get_admins()
 
         online_text = f"👥 *USER ONLINE CHECK*\n\nTotal User: `{len(users)}`\nTotal Admin: `{len(admins)}`\n\n"
 
         if users:
             online_text += "*Daftar User Online:*\n"
-            for i, user_id in enumerate(users[:20], 1):  # Show max 20 users
-                user_type = "👑" if user_id in admins else "👤"
-                online_text += f"{i}. {user_type} `{user_id}`\n"
+            for i, user in enumerate(users[:20], 1):  # Show max 20 users
+                user_type = "👑" if user['user_id'] in admins else "👤"
+                online_text += f"{i}. {user_type} `{user['user_id']}`\n"
 
             if len(users) > 20:
                 online_text += f"\n... dan {len(users) - 20} user lainnya"
@@ -1594,10 +1606,12 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif callback_data == "quick_stats":
         # Quick statistics
-        db = load_db()
-        users = db.get("users", [])
-        admins = db.get("admins", [])
-        user_logs = db.get("user_logs", [])
+        users = db.get_users()
+        admins = db.get_admins()
+        user_logs = db.get_logs()
+        autobc = get_auto_broadcast()
+        antispam = get_anti_spam()
+        group_welcome = get_group_welcome()
 
         stats_text = f"""
 📊 *QUICK STATISTICS*
@@ -1606,9 +1620,9 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👑 Total Admins: `{len(admins)}`
 📝 Total Logs: `{len(user_logs)}`
 
-⚙️ Auto Broadcast: `{'Aktif' if db.get('auto_broadcast', {}).get('enabled') else 'Mati'}`
-🛡️ Anti-Spam: `{'Aktif' if db.get('anti_spam', {}).get('enabled') else 'Mati'}`
-👥 Group Welcome: `{'Aktif' if db.get('group_welcome', {}).get('enabled') else 'Mati'}`
+⚙️ Auto Broadcast: `{'Aktif' if autobc.get('enabled') else 'Mati'}`
+🛡️ Anti-Spam: `{'Aktif' if antispam.get('enabled') else 'Mati'}`
+👥 Group Welcome: `{'Aktif' if group_welcome.get('enabled') else 'Mati'}`
         """
 
         await query.edit_message_text(stats_text.strip(), reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Kembali", callback_data="menu_quick_actions")], [InlineKeyboardButton("🏠 Menu Utama", callback_data="main_menu")]]), parse_mode=ParseMode.MARKDOWN)
@@ -1769,8 +1783,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_input = update.message.text or ""
 
     # Anti-Spam Check
-    db = load_db()
-    antispam_config = db.get("anti_spam", {})
+    antispam_config = get_anti_spam()
     if antispam_config.get("enabled") and not is_admin(user_id):
         # Track messages per user
         current_time = datetime.now()
@@ -1812,28 +1825,25 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text_input = update.message.text
-    db = load_db()
     
     # Menangani input teks
     if state.startswith("awaiting_text_"):
         key = state.replace("awaiting_text_", "")
         try:
             if key == "welcome":
-                if "welcome_message" not in db:
-                    db["welcome_message"] = DEFAULT_DB["welcome_message"]
-                db["welcome_message"]["text"] = text_input
+                welcome_msg = get_welcome_message()
+                welcome_msg["text"] = text_input
+                db.set_setting("welcome_message", welcome_msg)
             elif key == "broadcast":
-                if "broadcast_message" not in db:
-                    db["broadcast_message"] = DEFAULT_DB["broadcast_message"]
-                db["broadcast_message"]["text"] = text_input
+                broadcast_msg = get_broadcast_message()
+                broadcast_msg["text"] = text_input
+                db.set_setting("broadcast_message", broadcast_msg)
             elif key == "autobroadcast_msg":
-                if "auto_broadcast" not in db:
-                    db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
-                if "message" not in db["auto_broadcast"] or not isinstance(db["auto_broadcast"]["message"], dict):
-                    db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
-                db["auto_broadcast"]["message"]["text"] = text_input
-
-            save_db(db)
+                autobc = get_auto_broadcast()
+                if "message" not in autobc:
+                    autobc["message"] = DEFAULT_AUTO_BROADCAST["message"]
+                autobc["message"]["text"] = text_input
+                db.set_setting("auto_broadcast", autobc)
             await update.message.reply_text("✅ Teks berhasil diubah!", reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("👀 Preview Pesan", callback_data=f"preview_{key}")],
                 [InlineKeyboardButton("⬅️ Kembali ke Menu", callback_data=f"menu_{key}")],
@@ -1863,21 +1873,25 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     url = 'https://' + url.lstrip('https://').lstrip('http://')
 
                 if key == "welcome":
-                    if "welcome_message" not in db:
-                        db["welcome_message"] = DEFAULT_DB["welcome_message"]
-                    db["welcome_message"]["buttons"].append({"text": button_text, "url": url})
+                    welcome_msg = get_welcome_message()
+                    if "buttons" not in welcome_msg:
+                        welcome_msg["buttons"] = []
+                    welcome_msg["buttons"].append({"text": button_text, "url": url})
+                    db.set_setting("welcome_message", welcome_msg)
                 elif key == "broadcast":
-                    if "broadcast_message" not in db:
-                        db["broadcast_message"] = DEFAULT_DB["broadcast_message"]
-                    db["broadcast_message"]["buttons"].append({"text": button_text, "url": url})
+                    broadcast_msg = get_broadcast_message()
+                    if "buttons" not in broadcast_msg:
+                        broadcast_msg["buttons"] = []
+                    broadcast_msg["buttons"].append({"text": button_text, "url": url})
+                    db.set_setting("broadcast_message", broadcast_msg)
                 elif key == "autobroadcast_msg":
-                    if "auto_broadcast" not in db:
-                        db["auto_broadcast"] = DEFAULT_DB["auto_broadcast"]
-                    if "message" not in db["auto_broadcast"] or not isinstance(db["auto_broadcast"]["message"], dict):
-                        db["auto_broadcast"]["message"] = DEFAULT_DB["auto_broadcast"]["message"]
-                    db["auto_broadcast"]["message"]["buttons"].append({"text": button_text, "url": url})
-
-                save_db(db)
+                    autobc = get_auto_broadcast()
+                    if "message" not in autobc:
+                        autobc["message"] = DEFAULT_AUTO_BROADCAST["message"]
+                    if "buttons" not in autobc["message"]:
+                        autobc["message"]["buttons"] = []
+                    autobc["message"]["buttons"].append({"text": button_text, "url": url})
+                    db.set_setting("auto_broadcast", autobc)
                 await update.message.reply_text(f"✅ Tombol '{button_text}' berhasil ditambahkan!\n\n🔗 URL: {url}", reply_markup=InlineKeyboardMarkup([
                     [InlineKeyboardButton("➕ Tambah Lagi", callback_data=f"add_button_{key}")],
                     [InlineKeyboardButton("👀 Preview", callback_data=f"preview_{key}")],
@@ -1895,8 +1909,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             interval = int(text_input)
             if interval <= 0: raise ValueError
-            db["auto_broadcast"]["interval_minutes"] = interval
-            save_db(db)
+            autobc = get_auto_broadcast()
+            autobc["interval_minutes"] = interval
+            db.set_setting("auto_broadcast", autobc)
             await update.message.reply_text(f"✅ Interval auto broadcast diubah menjadi {interval} menit.")
 
             # Restart job queue dengan interval baru
@@ -1920,11 +1935,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             try:
                 new_admin_id = int(text_input.strip())
-                if new_admin_id in db["admins"]:
+                if db.is_admin(new_admin_id):
                     await update.message.reply_text("❌ User tersebut sudah menjadi admin.")
                 else:
-                    db["admins"].append(new_admin_id)
-                    save_db(db)
+                    db.add_admin(new_admin_id, user_id)
                     log_user_activity(update.effective_user, "add_admin", f"Menambah admin baru: {new_admin_id}")
                     await update.message.reply_text(f"✅ Admin baru berhasil ditambahkan: `{new_admin_id}`")
             except ValueError:
@@ -1937,11 +1951,10 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del_admin_id = int(text_input.strip())
                 if del_admin_id == ADMIN_IDS[0]:
                     await update.message.reply_text("❌ Tidak bisa menghapus admin utama.")
-                elif del_admin_id not in db["admins"]:
+                elif not db.is_admin(del_admin_id):
                     await update.message.reply_text("❌ User tersebut bukan admin.")
                 else:
-                    db["admins"].remove(del_admin_id)
-                    save_db(db)
+                    db.remove_admin(del_admin_id)
                     log_user_activity(update.effective_user, "remove_admin", f"Menghapus admin: {del_admin_id}")
                     await update.message.reply_text(f"✅ Admin berhasil dihapus: `{del_admin_id}`")
             except ValueError:
@@ -1957,11 +1970,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 cmd_name, response = parts
                 cmd_name = cmd_name.strip().lower()
 
-                if "custom_commands" not in db:
-                    db["custom_commands"] = {}
-
-                db["custom_commands"][cmd_name] = response.strip()
-                save_db(db)
+                custom_cmds = get_custom_commands()
+                custom_cmds[cmd_name] = response.strip()
+                db.set_setting("custom_commands", custom_cmds)
                 await update.message.reply_text(f"✅ Custom command `/{cmd_name}` berhasil ditambahkan!\n\nResponse: {response[:100]}{'...' if len(response) > 100 else ''}", parse_mode=ParseMode.MARKDOWN)
     elif state == "awaiting_spam_limit":
         if not is_admin(user_id):
@@ -1971,10 +1982,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 limit = int(text_input.strip())
                 if limit <= 0:
                     raise ValueError
-                if "anti_spam" not in db:
-                    db["anti_spam"] = DEFAULT_DB["anti_spam"]
-                db["anti_spam"]["max_messages_per_minute"] = limit
-                save_db(db)
+                antispam = get_anti_spam()
+                antispam["max_messages_per_minute"] = limit
+                db.set_setting("anti_spam", antispam)
                 await update.message.reply_text(f"✅ Limit anti-spam diubah menjadi {limit} pesan per menit.")
             except ValueError:
                 await update.message.reply_text("❌ Limit harus berupa angka positif.")
@@ -1983,18 +1993,17 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Anda tidak punya izin.")
         else:
             words = [word.strip().lower() for word in text_input.split(',')]
-            if "anti_spam" not in db:
-                db["anti_spam"] = DEFAULT_DB["anti_spam"]
-            if "banned_words" not in db["anti_spam"]:
-                db["anti_spam"]["banned_words"] = []
+            antispam = get_anti_spam()
+            if "banned_words" not in antispam:
+                antispam["banned_words"] = []
 
             added_words = []
             for word in words:
-                if word and word not in db["anti_spam"]["banned_words"]:
-                    db["anti_spam"]["banned_words"].append(word)
+                if word and word not in antispam["banned_words"]:
+                    antispam["banned_words"].append(word)
                     added_words.append(word)
 
-            save_db(db)
+            db.set_setting("anti_spam", antispam)
             if added_words:
                 await update.message.reply_text(f"✅ Kata terlarang berhasil ditambahkan: {', '.join(added_words)}")
             else:
@@ -2003,10 +2012,9 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(user_id):
             await update.message.reply_text("❌ Anda tidak punya izin.")
         else:
-            if "group_welcome" not in db:
-                db["group_welcome"] = DEFAULT_DB["group_welcome"]
-            db["group_welcome"]["text"] = text_input
-            save_db(db)
+            group_welcome = get_group_welcome()
+            group_welcome["text"] = text_input
+            db.set_setting("group_welcome", group_welcome)
             await update.message.reply_text("✅ Pesan welcome group berhasil diubah!")
     elif state == "awaiting_scheduled_message":
         if not is_admin(user_id):
@@ -2023,18 +2031,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     from datetime import datetime
                     datetime.strptime(time_str, "%H:%M")
 
-                    if "scheduled_messages" not in db:
-                        db["scheduled_messages"] = []
-
-                    scheduled_msg = {
-                        "time": time_str,
-                        "message": message,
-                        "created_by": user_id,
-                        "created_at": datetime.now().isoformat()
-                    }
-
-                    db["scheduled_messages"].append(scheduled_msg)
-                    save_db(db)
+                    db.add_scheduled_message(time_str, message, user_id)
                     await update.message.reply_text(f"✅ Scheduled message berhasil ditambahkan!\n\n⏰ Waktu: `{time_str}`\n📝 Pesan: {message[:100]}{'...' if len(message) > 100 else ''}", parse_mode=ParseMode.MARKDOWN)
                 except ValueError:
                     await update.message.reply_text("❌ Format waktu salah! Gunakan format HH:MM (contoh: 14:30)")
@@ -2043,7 +2040,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Anda tidak punya izin.")
         else:
             username_search = text_input.strip().lower()
-            user_logs = db.get("user_logs", [])
+            user_logs = db.get_logs()
 
             # Cari log berdasarkan username
             matching_logs = [
@@ -2071,8 +2068,7 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(log_text, parse_mode=ParseMode.MARKDOWN)
     elif state == "awaiting_sangmata_search":
         username_search = text_input.strip().lower()
-        db = load_db()
-        user_logs = db.get("user_logs", [])
+        user_logs = db.get_logs()
 
         # Cari user berdasarkan username di logs
         matching_users = {}
@@ -2110,13 +2106,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await update.message.reply_text(response, parse_mode=ParseMode.MARKDOWN)
 
-    save_db(db)
     context.user_data['state'] = None
 
     # Handle custom commands
     if text_input.startswith('/'):
         cmd = text_input[1:].lower().split()[0]  # Ambil command tanpa /
-        custom_cmds = db.get("custom_commands", {})
+        custom_cmds = get_custom_commands()
 
         if cmd in custom_cmds:
             response = custom_cmds[cmd]
@@ -2134,18 +2129,24 @@ async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(user_id) or not state or not state.startswith("awaiting_photo_"):
         return
 
-    db = load_db()
     key = state.replace("awaiting_photo_", "")
     photo_id = update.message.photo[-1].file_id
 
     if key == "welcome":
-        db["welcome_message"]["photo"] = photo_id
+        welcome_msg = get_welcome_message()
+        welcome_msg["photo"] = photo_id
+        db.set_setting("welcome_message", welcome_msg)
     elif key == "broadcast":
-        db["broadcast_message"]["photo"] = photo_id
+        broadcast_msg = get_broadcast_message()
+        broadcast_msg["photo"] = photo_id
+        db.set_setting("broadcast_message", broadcast_msg)
     elif key == "autobroadcast_msg":
-        db["auto_broadcast"]["message"]["photo"] = photo_id
+        autobc = get_auto_broadcast()
+        if "message" not in autobc:
+            autobc["message"] = DEFAULT_AUTO_BROADCAST["message"]
+        autobc["message"]["photo"] = photo_id
+        db.set_setting("auto_broadcast", autobc)
 
-    save_db(db)
     context.user_data['state'] = None
 
     await update.message.reply_text("✅ Foto berhasil disimpan!")
@@ -2159,13 +2160,10 @@ async def photo_handler_group_welcome(update: Update, context: ContextTypes.DEFA
     if not is_admin(user_id) or state != "awaiting_group_welcome_photo":
         return
 
-    db = load_db()
-    if "group_welcome" not in db:
-        db["group_welcome"] = DEFAULT_DB["group_welcome"]
-
+    group_welcome = get_group_welcome()
     photo_id = update.message.photo[-1].file_id
-    db["group_welcome"]["photo"] = photo_id
-    save_db(db)
+    group_welcome["photo"] = photo_id
+    db.set_setting("group_welcome", group_welcome)
 
     context.user_data['state'] = None
     await update.message.reply_text("✅ Foto welcome group berhasil disimpan!")
@@ -2190,26 +2188,43 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Parse JSON
         import json
-        restored_db = json.loads(file_content.decode('utf-8'))
+        restored_data = json.loads(file_content.decode('utf-8'))
 
         # Validasi struktur database
-        required_keys = ["users", "admins", "welcome_message", "broadcast_message", "auto_broadcast"]
-        if not all(key in restored_db for key in required_keys):
+        required_keys = ["welcome_message", "broadcast_message", "auto_broadcast"]
+        if not all(key in restored_data for key in required_keys):
             await update.message.reply_text("❌ File backup tidak valid! Struktur database tidak lengkap.")
             return
 
-        # Backup database saat ini sebelum restore
-        current_db = load_db()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_filename = f"pre_restore_backup_{timestamp}.json"
+        # Lakukan restore settings
+        for key in ["welcome_message", "broadcast_message", "auto_broadcast", "custom_commands", "anti_spam", "group_welcome"]:
+            if key in restored_data:
+                db.set_setting(key, restored_data[key])
 
-        with open(backup_filename, 'w', encoding='utf-8') as f:
-            json.dump(current_db, f, indent=4, ensure_ascii=False)
+        # Restore users dan admins jika ada
+        if "users" in restored_data:
+            for user in restored_data["users"]:
+                db.add_user(
+                    user_id=user.get("user_id"),
+                    username=user.get("username"),
+                    first_name=user.get("first_name"),
+                    last_name=user.get("last_name")
+                )
 
-        # Lakukan restore
-        save_db(restored_db)
+        if "admins" in restored_data:
+            for admin_id in restored_data["admins"]:
+                db.add_admin(admin_id, user_id)
 
-        await update.message.reply_text("✅ *RESTORE BERHASIL!*\n\nDatabase telah direstore dari file backup.\n\n⚠️ Backup sebelum restore tersimpan sebagai file lokal.", parse_mode=ParseMode.MARKDOWN)
+        # Restore scheduled messages jika ada
+        if "scheduled_messages" in restored_data:
+            for msg in restored_data["scheduled_messages"]:
+                db.add_scheduled_message(
+                    time=msg.get("time", ""),
+                    message=msg.get("message", ""),
+                    created_by=msg.get("created_by", user_id)
+                )
+
+        await update.message.reply_text("✅ *RESTORE BERHASIL!*\n\nDatabase PostgreSQL telah direstore dari file backup.\n\n⚠️ Data lama telah digantikan dengan data dari backup.", parse_mode=ParseMode.MARKDOWN)
 
     except json.JSONDecodeError:
         await update.message.reply_text("❌ File JSON tidak valid!")
@@ -2288,8 +2303,8 @@ def main():
     # Daftarkan job queue untuk auto broadcast
     job_queue = application.job_queue
     if job_queue:
-        db = load_db()
-        interval = db.get("auto_broadcast", {}).get("interval_minutes", 60)
+        autobc = get_auto_broadcast()
+        interval = autobc.get("interval_minutes", 60)
         job_queue.run_repeating(auto_broadcast_task, interval=interval * 60, first=10, name="auto_broadcast")
         print(f"Auto broadcast job dijadwalkan setiap {interval} menit.")
     else:
