@@ -17,15 +17,17 @@ import os
 import json
 import asyncio
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
 # --- KONFIGURASI UTAMA ---
-TOKEN = "8265804157:AAHpR-Mc6bZN3BYDlDXXkisr34s0BI0t7r8"
-ADMIN_IDS = [6592870669]  # Admin utama, bisa ditambah via command
+TOKEN = os.getenv("TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "YOUR_ADMIN_ID_HERE")
+ADMIN_IDS = [int(admin_id) for admin_id in ADMIN_IDS_STR.split(',') if admin_id]
 
 # --- NAMA FILE UNTUK MENYIMPAN DATA ---
 DB_FILE = "bot_database.json"
@@ -618,32 +620,32 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         stats_text = f"""
 📊 **STATISTIK BOT LENGKAP**
 
-👥 *USER MANAGEMENT*
+👥 *MANAJEMEN PENGGUNA*
 • Total Pengguna: `{len(users)}`
 • Total Admin: `{len(admins)}`
-• User Aktif (7 hari): `{active_users}`
-• User Baru Hari Ini: `{len(set(log.get('user_id') for log in today_logs))}`
+• Pengguna Aktif (7 hari): `{active_users}`
+• Pengguna Baru Hari Ini: `{len(set(log.get('user_id') for log in today_logs))}`
 
 ⚙️ *FITUR BOT*
 • Auto Broadcast: `{'🟢 Aktif' if db.get('auto_broadcast', {}).get('enabled') else '🔴 Mati'}`
 • Anti-Spam: `{'🟢 Aktif' if db.get('anti_spam', {}).get('enabled') else '🔴 Mati'}`
-• Group Welcome: `{'🟢 Aktif' if db.get('group_welcome', {}).get('enabled') else '🔴 Mati'}`
+• Sambutan Grup: `{'🟢 Aktif' if db.get('group_welcome', {}).get('enabled') else '🔴 Mati'}`
 
-📝 *CONTENT MANAGEMENT*
-• Custom Commands: `{len(custom_commands)}`
-• Scheduled Messages: `{len(scheduled_messages)}`
-• Total Logs: `{len(user_logs)}`
+📝 *MANAJEMEN KONTEN*
+• Perintah Kustom: `{len(custom_commands)}`
+• Pesan Terjadwal: `{len(scheduled_messages)}`
+• Total Log: `{len(user_logs)}`
 
-⏰ *SYSTEM INFO*
-• Uptime: `{uptime_str}`
+⏰ *INFO SISTEM*
+• Waktu Aktif: `{uptime_str}`
 • Aktivitas Hari Ini: `{len(today_logs)}`
 • Aktivitas Minggu Ini: `{len(week_logs)}`
-• Last Auto Broadcast: `{db.get('auto_broadcast', {}).get('last_sent', 'Belum pernah')[:19] if db.get('auto_broadcast', {}).get('last_sent') else 'Belum pernah'}`
+• Auto Broadcast Terakhir: `{db.get('auto_broadcast', {}).get('last_sent', 'Belum pernah')[:19] if db.get('auto_broadcast', {}).get('last_sent') else 'Belum pernah'}`
 
-💾 *STORAGE INFO*
-• Database Size: `~{len(str(db))} bytes`
-• User Logs Size: `{len(user_logs)} entries`
-• Backup Available: `{'Ya' if os.path.exists('backup_*.json') else 'Tidak'}`
+💾 *INFO PENYIMPANAN*
+• Ukuran Database: `~{os.path.getsize(DB_FILE) / 1024:.2f} KB`
+• Ukuran Log Pengguna: `{len(user_logs)} entri`
+• Cadangan Tersedia: `{'Ya' if any(f.startswith('backup_') for f in os.listdir('.')) else 'Tidak'}`
         """
 
         await update.message.reply_text(stats_text.strip(), parse_mode=ParseMode.MARKDOWN)
@@ -2177,6 +2179,36 @@ async def document_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Handler duplikat dihapus, sudah ditangani di photo_handler yang lebih umum
 
+async def funfact_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mengirim fakta menarik secara acak."""
+    fun_facts = [
+        "Jantung udang terletak di kepalanya.",
+        "Sekelompok flamingo disebut 'flamboyance'.",
+        "Madu tidak pernah busuk.",
+        "Gurita memiliki tiga jantung.",
+        "Suara bebek tidak menggema, dan tidak ada yang tahu mengapa.",
+        "Kumbang badak adalah serangga terkuat di dunia.",
+        "Beberapa kucing alergi terhadap manusia.",
+        "Salamander dapat menumbuhkan kembali anggota tubuhnya yang hilang.",
+        "Kupu-kupu merasakan dengan kakinya.",
+        "Bintang laut tidak memiliki otak."
+    ]
+    fact = random.choice(fun_facts)
+    await update.message.reply_text(f"💡 *Fakta Menarik:*\n\n{fact}", parse_mode=ParseMode.MARKDOWN)
+
+async def quote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mengirim kutipan inspirasional secara acak."""
+    quotes = [
+        "Satu-satunya cara untuk melakukan pekerjaan hebat adalah dengan mencintai apa yang Anda lakukan. - Steve Jobs",
+        "Percaya Anda bisa dan Anda sudah setengah jalan. - Theodore Roosevelt",
+        "Kesuksesan bukanlah akhir, kegagalan bukanlah fatal: yang terpenting adalah keberanian untuk melanjutkan. - Winston Churchill",
+        "Masa depan adalah milik mereka yang percaya pada keindahan impian mereka. - Eleanor Roosevelt",
+        "Jangan biarkan kemarin menyita terlalu banyak hari ini. - Will Rogers",
+        "Anda lebih berani dari yang Anda yakini, lebih kuat dari yang terlihat, dan lebih pintar dari yang Anda pikirkan. - A.A. Milne",
+        "Tidak masalah seberapa lambat Anda berjalan selama Anda tidak berhenti. - Konfusius"
+    ]
+    quote = random.choice(quotes)
+    await update.message.reply_text(f"🖋️ *Kutipan Hari Ini:*\n\n_{quote}_", parse_mode=ParseMode.MARKDOWN)
 
 async def set_bot_commands(application: Application):
     """Mengatur daftar command yang muncul di Telegram."""
@@ -2189,6 +2221,8 @@ async def set_bot_commands(application: Application):
         BotCommand("time", "🕐 Lihat waktu saat ini"),
         BotCommand("getid", "🆔 Dapatkan ID user/chat"),
         BotCommand("sangmata", "👁️ Cari user by username"),
+        BotCommand("funfact", "💡 Dapatkan fakta menarik"),
+        BotCommand("quote", "🖋️ Dapatkan kutipan inspirasional"),
         BotCommand("settings", "⚙️ Pengaturan (Admin)"),
         BotCommand("broadcast", "📢 Kirim pesan ke semua user (Admin)"),
         BotCommand("stats", "📊 Lihat statistik bot (Admin)"),
@@ -2228,6 +2262,8 @@ def main():
     application.add_handler(CommandHandler("time", time_command))
     application.add_handler(CommandHandler("getid", getid_command))
     application.add_handler(CommandHandler("sangmata", sangmata_command))
+    application.add_handler(CommandHandler("funfact", funfact_command))
+    application.add_handler(CommandHandler("quote", quote_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("settings", settings_command))
