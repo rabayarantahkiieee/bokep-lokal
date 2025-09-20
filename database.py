@@ -49,13 +49,13 @@ class DatabaseManager:
                     database=parsed.path.lstrip('/'),
                     sslmode='require'
                 )
-                print("✅ PostgreSQL connected successfully")
+                print("PostgreSQL connected successfully")
             else:
-                print("⚠️ DATABASE_URL not found, using JSON fallback")
+                print("DATABASE_URL not found, using JSON fallback")
                 self.pg_conn = None
 
         except Exception as e:
-            print(f"❌ PostgreSQL connection failed: {e}")
+            print(f"PostgreSQL connection failed: {e}")
             self.pg_conn = None
 
     def _init_redis(self):
@@ -67,13 +67,13 @@ class DatabaseManager:
                 self.redis_conn = redis.from_url(redis_url)
                 # Test connection
                 self.redis_conn.ping()
-                print("✅ Redis connected successfully")
+                print("Redis connected successfully")
             else:
-                print("⚠️ REDIS_URL not found, Redis disabled")
+                print("REDIS_URL not found, Redis disabled")
                 self.redis_conn = None
 
         except Exception as e:
-            print(f"❌ Redis connection failed: {e}")
+            print(f"Redis connection failed: {e}")
             self.redis_conn = None
 
     def _create_tables(self):
@@ -157,10 +157,10 @@ class DatabaseManager:
                 """)
 
                 self.pg_conn.commit()
-                print("✅ Database tables created successfully")
+                print("Database tables created successfully")
 
         except Exception as e:
-            print(f"❌ Error creating tables: {e}")
+            print(f"Error creating tables: {e}")
             self.pg_conn.rollback()
 
     # --- CACHE METHODS ---
@@ -674,11 +674,11 @@ class DatabaseManager:
                         msg.get("created_by", 0)
                     )
 
-            print("✅ Migration from JSON to PostgreSQL completed successfully")
+            print("Migration from JSON to PostgreSQL completed successfully")
             return True
 
         except Exception as e:
-            print(f"❌ Migration failed: {e}")
+            print(f"Migration failed: {e}")
             return False
 
     def get_stats(self) -> Dict:
