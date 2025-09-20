@@ -29,8 +29,14 @@ from database import get_db
 
 # --- KONFIGURASI UTAMA ---
 TOKEN = os.getenv("TOKEN", "YOUR_TELEGRAM_BOT_TOKEN_HERE")
-ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "YOUR_ADMIN_ID_HERE")
-ADMIN_IDS = [int(admin_id) for admin_id in ADMIN_IDS_STR.split(',') if admin_id]
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+ADMIN_IDS = []
+if ADMIN_IDS_STR and ADMIN_IDS_STR != "YOUR_ADMIN_ID_HERE":
+    try:
+        ADMIN_IDS = [int(admin_id.strip()) for admin_id in ADMIN_IDS_STR.split(',') if admin_id.strip()]
+    except ValueError:
+        print("Warning: Invalid ADMIN_IDS format, using empty list")
+        ADMIN_IDS = []
 
 # --- DATABASE MANAGER ---
 db = get_db()
